@@ -2,24 +2,23 @@ requests>=2, <3
 pytest
 pytest-cov
 coverage
-sphinx<8.2
+mock
+sphinx<1.7
 sphinx_rtd_theme
 jinja2
-pytz
-deepmerge
-Events
-setuptools==71.1.0
 
-numpy; python_version<="3.12"
-pandas; python_version<="3.12"
+# No wheels for Python 3.10 yet!
+numpy; python_version<"3.10"
+pandas; python_version<"3.10"
 
-pyyaml>=5.4
+pyyaml>=5.4; python_version>="3.6"
+pyyaml==5.3.1; python_version<"3.6"
 
 isort
-black>=24.3.0
+black; python_version>="3.6"
 twine
 
 # Requirements for testing [async] extra
-aiohttp>=3.9.4, <4
-pytest-asyncio<=0.25.1
-unasync
+aiohttp; python_version>="3.6"
+pytest-asyncio<=0.18.3; python_version>="3.6"
+unasync; python_version>="3.6"

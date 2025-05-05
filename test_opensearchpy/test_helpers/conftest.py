@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # SPDX-License-Identifier: Apache-2.0
 #
 # The OpenSearch Contributors require contributions made to
@@ -25,26 +26,24 @@
 #  under the License.
 
 
-from typing import Any
-from unittest.mock import Mock
-
+from mock import Mock
 from pytest import fixture
 
 from opensearchpy.connection.connections import add_connection, connections
 
 
-@fixture  # type: ignore
-def mock_client(dummy_response: Any) -> Any:
+@fixture
+def mock_client(dummy_response):
     client = Mock()
     client.search.return_value = dummy_response
     add_connection("mock", client)
     yield client
-    connections._conns = {}
+    connections._conn = {}
     connections._kwargs = {}
 
 
-@fixture  # type: ignore
-def dummy_response() -> Any:
+@fixture
+def dummy_response():
     return {
         "_shards": {"failed": 0, "successful": 10, "total": 10},
         "hits": {
@@ -92,8 +91,8 @@ def dummy_response() -> Any:
     }
 
 
-@fixture  # type: ignore
-def aggs_search() -> Any:
+@fixture
+def aggs_search():
     from opensearchpy import Search
 
     s = Search(index="flat-git")
@@ -107,8 +106,8 @@ def aggs_search() -> Any:
     return s
 
 
-@fixture  # type: ignore
-def aggs_data() -> Any:
+@fixture
+def aggs_data():
     return {
         "took": 4,
         "timed_out": False,

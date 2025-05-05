@@ -24,8 +24,6 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-from typing import Any
-
 from opensearchpy.connection.connections import get_connection
 
 from ..helpers.query import Bool, Q
@@ -37,7 +35,7 @@ from .utils import recursive_to_dict
 class UpdateByQuery(Request):
     query = ProxyDescriptor("query")
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """
         Update by query request to opensearch.
 
@@ -49,19 +47,19 @@ class UpdateByQuery(Request):
         overridden by methods (`using`, `index` and `doc_type` respectively).
 
         """
-        super().__init__(**kwargs)
+        super(UpdateByQuery, self).__init__(**kwargs)
         self._response_class = UpdateByQueryResponse
-        self._script: Any = {}
+        self._script = {}
         self._query_proxy = QueryProxy(self, "query")
 
-    def filter(self, *args: Any, **kwargs: Any) -> Any:
+    def filter(self, *args, **kwargs):
         return self.query(Bool(filter=[Q(*args, **kwargs)]))
 
-    def exclude(self, *args: Any, **kwargs: Any) -> Any:
+    def exclude(self, *args, **kwargs):
         return self.query(Bool(filter=[~Q(*args, **kwargs)]))
 
     @classmethod
-    def from_dict(cls, d: Any) -> Any:
+    def from_dict(cls, d):
         """
         Construct a new `UpdateByQuery` instance from a raw dict containing the search
         body. Useful when migrating from raw dictionaries.
@@ -82,20 +80,20 @@ class UpdateByQuery(Request):
         u.update_from_dict(d)
         return u
 
-    def _clone(self) -> Any:
+    def _clone(self):
         """
         Return a clone of the current search request. Performs a shallow copy
         of all the underlying objects. Used internally by most state modifying
         APIs.
         """
-        ubq = super()._clone()
+        ubq = super(UpdateByQuery, self)._clone()
 
         ubq._response_class = self._response_class
         ubq._script = self._script.copy()
         ubq.query._proxied = self.query._proxied
         return ubq
 
-    def response_class(self, cls: Any) -> Any:
+    def response_class(self, cls):
         """
         Override the default wrapper used for the response.
         """
@@ -103,7 +101,7 @@ class UpdateByQuery(Request):
         ubq._response_class = cls
         return ubq
 
-    def update_from_dict(self, d: Any) -> "UpdateByQuery":
+    def update_from_dict(self, d):
         """
         Apply options from a serialized body to the current instance. Modifies
         the object in-place. Used mostly by ``from_dict``.
@@ -116,7 +114,7 @@ class UpdateByQuery(Request):
         self._extra.update(d)
         return self
 
-    def script(self, **kwargs: Any) -> Any:
+    def script(self, **kwargs):
         """
         Define update action to take:
 
@@ -137,7 +135,7 @@ class UpdateByQuery(Request):
         ubq._script.update(kwargs)
         return ubq
 
-    def to_dict(self, **kwargs: Any) -> Any:
+    def to_dict(self, **kwargs):
         """
         Serialize the search into the dictionary that will be sent over as the
         request'ubq body.
@@ -155,7 +153,7 @@ class UpdateByQuery(Request):
         d.update(recursive_to_dict(kwargs))
         return d
 
-    def execute(self) -> Any:
+    def execute(self):
         """
         Execute the search and return an instance of ``Response`` wrapping all
         the data.

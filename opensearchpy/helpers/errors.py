@@ -25,21 +25,17 @@
 #  under the License.
 
 
-from typing import Any, List
-
 from ..exceptions import OpenSearchException
 
 
 class BulkIndexError(OpenSearchException):
     @property
-    def errors(self) -> List[Any]:
+    def errors(self):
         """List of errors from execution of the last chunk."""
-        return self.args[1]  # type: ignore
+        return self.args[1]
 
 
 class ScanError(OpenSearchException):
-    scroll_id: str
-
-    def __init__(self, scroll_id: str, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, scroll_id, *args, **kwargs):
+        super(ScanError, self).__init__(*args, **kwargs)  # type: ignore
         self.scroll_id = scroll_id

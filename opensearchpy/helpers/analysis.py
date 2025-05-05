@@ -24,21 +24,21 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-from typing import Any, Optional
+import six
 
 from opensearchpy.connection.connections import get_connection
 
 from .utils import AttrDict, DslBase, merge
 
+__all__ = ["tokenizer", "analyzer", "char_filter", "token_filter", "normalizer"]
 
-class AnalysisBase:
+
+class AnalysisBase(object):
     @classmethod
-    def _type_shortcut(
-        cls: Any, name_or_instance: Any, type: Any = None, **kwargs: Any
-    ) -> Any:
+    def _type_shortcut(cls, name_or_instance, type=None, **kwargs):
         if isinstance(name_or_instance, cls):
             if type or kwargs:
-                raise ValueError(f"{cls.__name__}() cannot accept parameters.")
+                raise ValueError("%s() cannot accept parameters." % cls.__name__)
             return name_or_instance
 
         if not (type or kwargs):
@@ -49,32 +49,30 @@ class AnalysisBase:
         )
 
 
-class CustomAnalysis:
-    name: Optional[str] = "custom"
+class CustomAnalysis(object):
+    name = "custom"
 
-    def __init__(
-        self, filter_name: str, builtin_type: str = "custom", **kwargs: Any
-    ) -> None:
+    def __init__(self, filter_name, builtin_type="custom", **kwargs):
         self._builtin_type = builtin_type
         self._name = filter_name
-        super().__init__(**kwargs)
+        super(CustomAnalysis, self).__init__(**kwargs)
 
-    def to_dict(self) -> Any:
+    def to_dict(self):
         # only name to present in lists
         return self._name
 
-    def get_definition(self) -> Any:
-        d = super().to_dict()  # type: ignore
+    def get_definition(self):
+        d = super(CustomAnalysis, self).to_dict()
         d = d.pop(self.name)
         d["type"] = self._builtin_type
         return d
 
 
 class CustomAnalysisDefinition(CustomAnalysis):
-    def get_analysis_definition(self: Any) -> Any:
+    def get_analysis_definition(self):
         out = {self._type_name: {self._name: self.get_definition()}}
 
-        t: Any = getattr(self, "tokenizer", None)
+        t = getattr(self, "tokenizer", None)
         if "tokenizer" in self._param_defs and hasattr(t, "get_definition"):
             out["tokenizer"] = {t._name: t.get_definition()}
 
@@ -104,25 +102,25 @@ class CustomAnalysisDefinition(CustomAnalysis):
         return out
 
 
-class BuiltinAnalysis:
-    name: Optional[str] = "builtin"
+class BuiltinAnalysis(object):
+    name = "builtin"
 
-    def __init__(self, name: Any) -> None:
+    def __init__(self, name):
         self._name = name
-        super().__init__()
+        super(BuiltinAnalysis, self).__init__()
 
-    def to_dict(self) -> Any:
+    def to_dict(self):
         # only name to present in lists
         return self._name
 
 
 class Analyzer(AnalysisBase, DslBase):
-    _type_name: str = "analyzer"
-    name: Optional[str] = None
+    _type_name = "analyzer"
+    name = None
 
 
 class BuiltinAnalyzer(BuiltinAnalysis, Analyzer):
-    def get_analysis_definition(self) -> Any:
+    def get_analysis_definition(self):
         return {}
 
 
@@ -133,13 +131,7 @@ class CustomAnalyzer(CustomAnalysisDefinition, Analyzer):
         "tokenizer": {"type": "tokenizer"},
     }
 
-    def simulate(
-        self,
-        text: Any,
-        using: str = "default",
-        explain: bool = False,
-        attributes: Any = None,
-    ) -> Any:
+    def simulate(self, text, using="default", explain=False, attributes=None):
         """
         Use the Analyze API of opensearch to test the outcome of this analyzer.
 
@@ -166,7 +158,7 @@ class CustomAnalyzer(CustomAnalysisDefinition, Analyzer):
             sec_def = definition.get(section, {})
             sec_names = analyzer_def[section]
 
-            if isinstance(sec_names, str):
+            if isinstance(sec_names, six.string_types):
                 body[section] = sec_def.get(sec_names, sec_names)
             else:
                 body[section] = [
@@ -180,12 +172,12 @@ class CustomAnalyzer(CustomAnalysisDefinition, Analyzer):
 
 
 class Normalizer(AnalysisBase, DslBase):
-    _type_name: str = "normalizer"
-    name: Optional[str] = None
+    _type_name = "normalizer"
+    name = None
 
 
 class BuiltinNormalizer(BuiltinAnalysis, Normalizer):
-    def get_analysis_definition(self) -> Any:
+    def get_analysis_definition(self):
         return {}
 
 
@@ -197,8 +189,8 @@ class CustomNormalizer(CustomAnalysisDefinition, Normalizer):
 
 
 class Tokenizer(AnalysisBase, DslBase):
-    _type_name: str = "tokenizer"
-    name: Optional[str] = None
+    _type_name = "tokenizer"
+    name = None
 
 
 class BuiltinTokenizer(BuiltinAnalysis, Tokenizer):
@@ -210,8 +202,8 @@ class CustomTokenizer(CustomAnalysis, Tokenizer):
 
 
 class TokenFilter(AnalysisBase, DslBase):
-    _type_name: str = "token_filter"
-    name: Optional[str] = None
+    _type_name = "token_filter"
+    name = None
 
 
 class BuiltinTokenFilter(BuiltinAnalysis, TokenFilter):
@@ -225,31 +217,27 @@ class CustomTokenFilter(CustomAnalysis, TokenFilter):
 class MultiplexerTokenFilter(CustomTokenFilter):
     name = "multiplexer"
 
-    def get_definition(self) -> Any:
+    def get_definition(self):
         d = super(CustomTokenFilter, self).get_definition()
 
         if "filters" in d:
             d["filters"] = [
                 # comma delimited string given by user
-                (
-                    fs
-                    if isinstance(fs, str)
-                    else
-                    # list of strings or TokenFilter objects
-                    ", ".join(f.to_dict() if hasattr(f, "to_dict") else f for f in fs)
-                )
+                fs if isinstance(fs, six.string_types) else
+                # list of strings or TokenFilter objects
+                ", ".join(f.to_dict() if hasattr(f, "to_dict") else f for f in fs)
                 for fs in self.filters
             ]
         return d
 
-    def get_analysis_definition(self) -> Any:
+    def get_analysis_definition(self):
         if not hasattr(self, "filters"):
             return {}
 
-        fs: Any = {}
+        fs = {}
         d = {"filter": fs}
         for filters in self.filters:
-            if isinstance(filters, str):
+            if isinstance(filters, six.string_types):
                 continue
             fs.update(
                 {
@@ -264,7 +252,7 @@ class MultiplexerTokenFilter(CustomTokenFilter):
 class ConditionalTokenFilter(CustomTokenFilter):
     name = "condition"
 
-    def get_definition(self) -> Any:
+    def get_definition(self):
         d = super(CustomTokenFilter, self).get_definition()
         if "filter" in d:
             d["filter"] = [
@@ -272,7 +260,7 @@ class ConditionalTokenFilter(CustomTokenFilter):
             ]
         return d
 
-    def get_analysis_definition(self) -> Any:
+    def get_analysis_definition(self):
         if not hasattr(self, "filter"):
             return {}
 
@@ -286,8 +274,8 @@ class ConditionalTokenFilter(CustomTokenFilter):
 
 
 class CharFilter(AnalysisBase, DslBase):
-    _type_name: str = "char_filter"
-    name: Optional[str] = None
+    _type_name = "char_filter"
+    name = None
 
 
 class BuiltinCharFilter(BuiltinAnalysis, CharFilter):
@@ -304,5 +292,3 @@ tokenizer = Tokenizer._type_shortcut
 token_filter = TokenFilter._type_shortcut
 char_filter = CharFilter._type_shortcut
 normalizer = Normalizer._type_shortcut
-
-__all__ = ["tokenizer", "analyzer", "char_filter", "token_filter", "normalizer"]

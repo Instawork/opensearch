@@ -5,7 +5,7 @@
 #
 # Export the NUMBER_OF_NODES variable to start more than 1 node
 
-script_path=$(dirname $(realpath $0))
+script_path=$(dirname $(realpath -s $0))
 source $script_path/functions/imports.sh
 set -euo pipefail
 
@@ -27,7 +27,6 @@ environment=($(cat <<-END
   --env path.repo=/tmp
   --env repositories.url.allowed_urls=http://snapshot.test*
   --env action.destructive_requires_name=false
-  --env OPENSEARCH_INITIAL_ADMIN_PASSWORD=myStrongPassword123!
 END
 ))
 
@@ -55,15 +54,6 @@ END
 END
 ))
 
-OPENSEARCH_REQUIRED_VERSION="2.12.0"
-# Starting in 2.12.0, security demo configuration script requires an initial admin password
-COMPARE_VERSION=`echo $OPENSEARCH_REQUIRED_VERSION $OPENSEARCH_VERSION | tr ' ' '\n' | sort -V | uniq | head -n 1`
-if [ "$COMPARE_VERSION" != "$OPENSEARCH_REQUIRED_VERSION" ]; then
-  CREDENTIAL="admin:admin"
-else
-  CREDENTIAL="admin:myStrongPassword123!"
-fi
-
   # make sure we detach for all but the last node if DETACH=false (default) so all nodes are started
   local_detach="true"
   if [[ "$i" == "$((NUMBER_OF_NODES-1))" ]]; then local_detach=$DETACH; fi
@@ -71,7 +61,7 @@ fi
   set -x
   healthcmd="curl -vvv -s --fail http://localhost:9200/_cluster/health || exit 1"
   if [[ "$SECURE_INTEGRATION" == "true" ]]; then
-    healthcmd="curl -vvv -s --insecure -u $CREDENTIAL --fail https://localhost:9200/_cluster/health || exit 1"
+    healthcmd="curl -vvv -s --insecure -u admin:admin --fail https://localhost:9200/_cluster/health || exit 1"
   fi
 
   CLUSTER_TAG=$CLUSTER
@@ -91,7 +81,7 @@ fi
     docker run \
       --name "$node_name" \
       --network "$network_name" \
-      --env "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g" \
+      --env "ES_JAVA_OPTS=-Xms1g -Xmx1g" \
       "${environment[@]}" \
       "${volumes[@]}" \
       "${security[@]}" \

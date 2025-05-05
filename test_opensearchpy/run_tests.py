@@ -7,11 +7,6 @@
 #
 # Modifications Copyright OpenSearch Contributors. See
 # GitHub history for details.
-
-
-#
-# Modifications Copyright OpenSearch Contributors. See
-# GitHub history for details.
 #
 #  Licensed to Elasticsearch B.V. under one or more contributor
 #  license agreements. See the NOTICE file distributed with
@@ -31,20 +26,15 @@
 #  under the License.
 
 
+from __future__ import print_function
+
 import subprocess
 import sys
 from os import environ
 from os.path import abspath, dirname, exists, join, pardir
-from subprocess import CalledProcessError
-from typing import Any
 
 
-def fetch_opensearch_repo() -> None:
-    """
-    runs a git fetch origin on configured opensearch core repo
-    :return: None if environmental variables TEST_OPENSEARCH_YAML_DIR
-    is set or TEST_OPENSEARCH_NOFETCH is set to False; else returns nothing
-    """
+def fetch_opensearch_repo():
     # user is manually setting YAML dir, don't tamper with it
     if "TEST_OPENSEARCH_YAML_DIR" in environ:
         return
@@ -76,48 +66,25 @@ def fetch_opensearch_repo() -> None:
 
     # no test directory
     if not exists(repo_path):
-        subprocess.check_call(f"mkdir {repo_path}", shell=True)
+        subprocess.check_call("mkdir %s" % repo_path, shell=True)
 
     # make a new blank repository in the test directory
-    subprocess.check_call(f"cd {repo_path} && git init", shell=True)
+    subprocess.check_call("cd %s && git init" % repo_path, shell=True)
 
-    try:
-        # add a remote
-        subprocess.check_call(
-            "cd %s && git remote add origin https://github.com/opensearch-project/opensearch.git"
-            % repo_path,
-            shell=True,
-        )
-    except CalledProcessError as e:
-        # if the run is interrupted from a previous run, it doesn't clean up, and the git add origin command
-        # errors out; this allows the test to continue
-        remote_origin_already_exists = 3
-        if e.returncode == remote_origin_already_exists:
-            print(
-                "Consider setting TEST_OPENSEARCH_NOFETCH=true if you want to reuse the existing local OpenSearch repo"
-            )
-        else:
-            print(e)
-        sys.exit(1)
+    # add a remote
+    subprocess.check_call(
+        "cd %s && git remote add origin https://github.com/opensearch-project/opensearch.git"
+        % repo_path,
+        shell=True,
+    )
 
     # fetch the sha commit, version from info()
     print("Fetching opensearch repo...")
-    subprocess.check_call(f"cd {repo_path} && git fetch origin {sha}", shell=True)
+    subprocess.check_call("cd %s && git fetch origin %s" % (repo_path, sha), shell=True)
 
 
-def run_all(argv: Any = None) -> None:
-    """
-    run all the tests given arguments and environment variables
-    - sets defaults if argv is None, running "pytest --cov=opensearchpy
-    --junitxml=<path to opensearch-py-junit.xml>
-    --log-level=DEBUG --cache-clear -vv --cov-report=<path to output code coverage"
-    * GITHUB_ACTION: fetches yaml tests if this is not in environment variables
-    * TEST_PATTERN: specify a test to run
-    * TEST_TYPE: "server" runs on TLS connection; None is unencrypted
-    * OPENSEARCH_VERSION: "SNAPSHOT" does not do anything with plugins
-    :param argv: if this is None, then the default arguments
-    """
-    sys.exitfunc = lambda: sys.stderr.write("Shutting down....\n")  # type: ignore
+def run_all(argv=None):
+    sys.exitfunc = lambda: sys.stderr.write("Shutting down....\n")
     # fetch yaml tests anywhere that's not GitHub Actions
     if "GITHUB_ACTION" not in environ:
         fetch_opensearch_repo()
@@ -127,78 +94,59 @@ def run_all(argv: Any = None) -> None:
         junit_xml = join(
             abspath(dirname(dirname(__file__))), "junit", "opensearch-py-junit.xml"
         )
-        codecov_xml = join(
-            abspath(dirname(dirname(__file__))), "junit", "opensearch-py-codecov.xml"
-        )
-
         argv = [
             "pytest",
-            "--cov=opensearchpy",
-            f"--junitxml={junit_xml}",
+            "--cov=opensearch",
+            "--junitxml=%s" % junit_xml,
             "--log-level=DEBUG",
             "--cache-clear",
             "-vv",
-            f"--cov-report=xml:{codecov_xml}",
         ]
-        if (
-            "OPENSEARCHPY_GEN_HTML_COV" in environ
-            and environ.get("OPENSEARCHPY_GEN_HTML_COV") == "true"
-        ):
-            codecov_html = join(abspath(dirname(dirname(__file__))), "junit", "html")
-            argv.append(f"--cov-report=html:{codecov_html}")
 
         secured = False
         if environ.get("OPENSEARCH_URL", "").startswith("https://"):
             secured = True
 
-        # check TEST_PATTERN env var for specific test to run
-        test_pattern = environ.get("TEST_PATTERN")
-        if test_pattern:
-            argv.append(f"-k {test_pattern}")
-        else:
-            ignores = [
+        ignores = []
+        # Python 3.6+ is required for async
+        if sys.version_info < (3, 6):
+            ignores.append("test_opensearchpy/test_async/")
+
+        ignores.extend(
+            [
                 "test_opensearchpy/test_server/",
                 "test_opensearchpy/test_server_secured/",
                 "test_opensearchpy/test_async/test_server/",
-                "test_opensearchpy/test_async/test_server_secured/",
             ]
+        )
 
-            # GitHub Actions, only run server tests
-            if environ.get("TEST_TYPE") == "server":
-                test_dir = abspath(dirname(__file__))
-                if secured:
-                    argv.append(join(test_dir, "test_server_secured"))
-                    argv.append(join(test_dir, "test_async/test_server_secured"))
-                    ignores.extend(
-                        [
-                            "test_opensearchpy/test_server/",
-                            "test_opensearchpy/test_async/test_server/",
-                        ]
-                    )
-                else:
-                    argv.append(join(test_dir, "test_server"))
-                    argv.append(join(test_dir, "test_async/test_server"))
-                    ignores.extend(
-                        [
-                            "test_opensearchpy/test_server_secured/",
-                        ]
-                    )
-
-            # There are no plugins for unreleased versions of opensearch
-            if environ.get("OPENSEARCH_VERSION") == "SNAPSHOT":
+        # Jenkins/Github actions, only run server tests
+        if environ.get("TEST_TYPE") == "server":
+            test_dir = abspath(dirname(__file__))
+            if secured:
+                argv.append(join(test_dir, "test_server_secured"))
                 ignores.extend(
                     [
-                        "test_opensearchpy/test_server/test_plugins/",
-                        "test_opensearchpy/test_async/test_server/test_plugins/",
+                        "test_opensearchpy/test_server/",
+                        "test_opensearchpy/test_async/test_server/",
+                    ]
+                )
+            else:
+                argv.append(join(test_dir, "test_server"))
+                if sys.version_info >= (3, 6):
+                    argv.append(join(test_dir, "test_async/test_server"))
+                ignores.extend(
+                    [
+                        "test_opensearchpy/test_server_secured/",
                     ]
                 )
 
-            if ignores:
-                argv.extend([f"--ignore={ignore}" for ignore in ignores])
+        if ignores:
+            argv.extend(["--ignore=%s" % ignore for ignore in ignores])
 
-            # Not in CI, run all tests specified.
-            else:
-                argv.append(abspath(dirname(__file__)))
+        # Not in CI, run all tests specified.
+        else:
+            argv.append(abspath(dirname(__file__)))
 
     exit_code = 0
     try:

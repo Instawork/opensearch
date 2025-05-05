@@ -27,7 +27,6 @@
 
 import time
 import warnings
-from typing import Any, Collection, Mapping, Optional, Union
 
 try:
     import requests
@@ -35,8 +34,6 @@ try:
     REQUESTS_AVAILABLE = True
 except ImportError:
     REQUESTS_AVAILABLE = False
-
-from opensearchpy.metrics import Metrics, MetricsNone
 
 from ..compat import reraise_exceptions, string_types, urlencode
 from ..exceptions import (
@@ -71,30 +68,25 @@ class RequestsHttpConnection(Connection):
         For tracing all requests made by this transport.
     :arg pool_maxsize: Maximum connection pool size used by pool-manager
         For custom connection-pooling on current session
-    :arg metrics: metrics is an instance of a subclass of the
-        :class:`~opensearchpy.Metrics` class, used for collecting
-        and reporting metrics related to the client's operations;
     """
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: Optional[int] = None,
-        http_auth: Any = None,
-        use_ssl: bool = False,
-        verify_certs: bool = True,
-        ssl_show_warn: bool = True,
-        ca_certs: Any = None,
-        client_cert: Any = None,
-        client_key: Any = None,
-        headers: Any = None,
-        http_compress: Any = None,
-        opaque_id: Any = None,
-        pool_maxsize: Any = None,
-        metrics: Metrics = MetricsNone(),
-        **kwargs: Any,
-    ) -> None:
-        self.metrics = metrics
+        host="localhost",
+        port=None,
+        http_auth=None,
+        use_ssl=False,
+        verify_certs=True,
+        ssl_show_warn=True,
+        ca_certs=None,
+        client_cert=None,
+        client_key=None,
+        headers=None,
+        http_compress=None,
+        opaque_id=None,
+        pool_maxsize=None,
+        **kwargs
+    ):
         if not REQUESTS_AVAILABLE:
             raise ImproperlyConfigured(
                 "Please install requests to use RequestsHttpConnection."
@@ -111,28 +103,31 @@ class RequestsHttpConnection(Connection):
             self.session.mount("http://", pool_adapter)
             self.session.mount("https://", pool_adapter)
 
-        super().__init__(
+        super(RequestsHttpConnection, self).__init__(
             host=host,
             port=port,
             use_ssl=use_ssl,
             headers=headers,
             http_compress=http_compress,
             opaque_id=opaque_id,
-            **kwargs,
+            **kwargs
         )
 
         if not self.http_compress:
             # Need to set this to 'None' otherwise Requests adds its own.
-            self.session.headers["accept-encoding"] = None  # type: ignore
+            self.session.headers["accept-encoding"] = None
 
         if http_auth is not None:
             if isinstance(http_auth, (tuple, list)):
                 http_auth = tuple(http_auth)
             elif isinstance(http_auth, string_types):
-                http_auth = tuple(http_auth.split(":", 1))  # type: ignore
+                http_auth = tuple(http_auth.split(":", 1))
             self.session.auth = http_auth
 
-        self.base_url = f"{self.host}{self.url_prefix}"
+        self.base_url = "%s%s" % (
+            self.host,
+            self.url_prefix,
+        )
         self.session.verify = verify_certs
         if not client_key:
             self.session.cert = client_cert
@@ -151,7 +146,7 @@ class RequestsHttpConnection(Connection):
                 self.session.verify = ca_certs
 
         if not ssl_show_warn:
-            requests.packages.urllib3.disable_warnings()  # type: ignore
+            requests.packages.urllib3.disable_warnings()
 
         if self.use_ssl and not verify_certs and ssl_show_warn:
             warnings.warn(
@@ -159,26 +154,18 @@ class RequestsHttpConnection(Connection):
                 % self.host
             )
 
-    def perform_request(  # type: ignore
-        self,
-        method: str,
-        url: str,
-        params: Optional[Mapping[str, Any]] = None,
-        body: Optional[bytes] = None,
-        timeout: Optional[Union[int, float]] = None,
-        allow_redirects: Optional[bool] = True,
-        ignore: Collection[int] = (),
-        headers: Optional[Mapping[str, str]] = None,
-    ) -> Any:
+    def perform_request(
+        self, method, url, params=None, body=None, timeout=None, ignore=(), headers=None
+    ):
         url = self.base_url + url
         headers = headers or {}
         if params:
-            url = f"{url}?{urlencode(params or {})}"
+            url = "%s?%s" % (url, urlencode(params or {}))
 
         orig_body = body
         if self.http_compress and body:
             body = self._gzip_compress(body)
-            headers["content-encoding"] = "gzip"  # type: ignore
+            headers["content-encoding"] = "gzip"
 
         start = time.time()
         request = requests.Request(method=method, headers=headers, url=url, data=body)
@@ -186,13 +173,9 @@ class RequestsHttpConnection(Connection):
         settings = self.session.merge_environment_settings(
             prepared_request.url, {}, None, None, None
         )
-        send_kwargs: Any = {
-            "timeout": timeout or self.timeout,
-            "allow_redirects": allow_redirects,
-        }
+        send_kwargs = {"timeout": timeout or self.timeout}
         send_kwargs.update(settings)
         try:
-            self.metrics.request_start()
             response = self.session.send(prepared_request, **send_kwargs)
             duration = time.time() - start
             raw_data = response.content.decode("utf-8", "surrogatepass")
@@ -212,8 +195,6 @@ class RequestsHttpConnection(Connection):
             if isinstance(e, requests.Timeout):
                 raise ConnectionTimeout("TIMEOUT", str(e), e)
             raise ConnectionError("N/A", str(e), e)
-        finally:
-            self.metrics.request_end()
 
         # raise warnings if any from the 'Warnings' header.
         warnings_headers = (
@@ -254,10 +235,10 @@ class RequestsHttpConnection(Connection):
         return response.status_code, response.headers, raw_data
 
     @property
-    def headers(self) -> Any:  # type: ignore
+    def headers(self):
         return self.session.headers
 
-    def close(self) -> None:
+    def close(self):
         """
         Explicitly closes connections
         """

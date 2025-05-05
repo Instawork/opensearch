@@ -24,12 +24,7 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-from typing import Any
-
-import pytest
-
 from opensearchpy import Date, Document, Index, IndexTemplate, Text
-from opensearchpy.exceptions import ValidationException
 from opensearchpy.helpers import analysis
 
 
@@ -38,7 +33,7 @@ class Post(Document):
     published_from = Date()
 
 
-def test_index_template_works(write_client: Any) -> None:
+def test_index_template_works(write_client):
     it = IndexTemplate("test-template", "test-*")
     it.document(Post)
     it.settings(number_of_replicas=0, number_of_shards=1)
@@ -59,7 +54,7 @@ def test_index_template_works(write_client: Any) -> None:
     } == write_client.indices.get_mapping(index="test-blog")
 
 
-def test_index_can_be_saved_even_with_settings(write_client: Any) -> None:
+def test_index_can_be_saved_even_with_settings(write_client):
     i = Index("test-blog", using=write_client)
     i.settings(number_of_shards=3, number_of_replicas=0)
     i.save()
@@ -71,12 +66,12 @@ def test_index_can_be_saved_even_with_settings(write_client: Any) -> None:
     )
 
 
-def test_index_exists(data_client: Any) -> None:
+def test_index_exists(data_client):
     assert Index("git").exists()
     assert not Index("not-there").exists()
 
 
-def test_index_can_be_created_with_settings_and_mappings(write_client: Any) -> None:
+def test_index_can_be_created_with_settings_and_mappings(write_client):
     i = Index("test-blog", using=write_client)
     i.document(Post)
     i.settings(number_of_replicas=0, number_of_shards=1)
@@ -101,7 +96,7 @@ def test_index_can_be_created_with_settings_and_mappings(write_client: Any) -> N
     }
 
 
-def test_delete(write_client: Any) -> None:
+def test_delete(write_client):
     write_client.indices.create(
         index="test-index",
         body={"settings": {"number_of_replicas": 0, "number_of_shards": 1}},
@@ -112,7 +107,7 @@ def test_delete(write_client: Any) -> None:
     assert not write_client.indices.exists(index="test-index")
 
 
-def test_multiple_indices_with_same_doc_type_work(write_client: Any) -> None:
+def test_multiple_indices_with_same_doc_type_work(write_client):
     i1 = Index("test-index-1", using=write_client)
     i2 = Index("test-index-2", using=write_client)
 
@@ -120,46 +115,8 @@ def test_multiple_indices_with_same_doc_type_work(write_client: Any) -> None:
         i.document(Post)
         i.create()
 
-    for j in ("test-index-1", "test-index-2"):
-        settings = write_client.indices.get_settings(index=j)
-        assert settings[j]["settings"]["index"]["analysis"] == {
+    for i in ("test-index-1", "test-index-2"):
+        settings = write_client.indices.get_settings(index=i)
+        assert settings[i]["settings"]["index"]["analysis"] == {
             "analyzer": {"my_analyzer": {"type": "custom", "tokenizer": "keyword"}}
         }
-
-
-def test_index_can_be_saved_through_alias_with_settings(write_client: Any) -> None:
-    raw_index = Index("test-blog", using=write_client)
-    raw_index.settings(number_of_shards=3, number_of_replicas=0)
-    raw_index.aliases(**{"blog-alias": {}})
-    raw_index.save()
-
-    i = Index("blog-alias", using=write_client)
-    i.settings(number_of_replicas=1)
-    i.save()
-
-    assert (
-        "1"
-        == raw_index.get_settings()["test-blog"]["settings"]["index"][
-            "number_of_replicas"
-        ]
-    )
-
-
-def test_validation_alias_has_many_indices(write_client: Any) -> None:
-    raw_index_1 = Index("test-blog-1", using=write_client)
-    raw_index_1.settings(number_of_shards=3, number_of_replicas=0)
-    raw_index_1.aliases(**{"blog-alias": {}})
-    raw_index_1.save()
-
-    raw_index_2 = Index("test-blog-2", using=write_client)
-    raw_index_2.settings(number_of_shards=3, number_of_replicas=0)
-    raw_index_2.aliases(**{"blog-alias": {}})
-    raw_index_2.save()
-
-    i = Index("blog-alias", using=write_client)
-    with pytest.raises(ValidationException) as e:
-        i.save()
-
-    message, indices = e.value.args[0][:-1].split(": ")
-    assert message == "Settings for blog-alias point to multiple indices"
-    assert set(indices.split(", ")) == {"test-blog-1", "test-blog-2"}

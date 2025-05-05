@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # SPDX-License-Identifier: Apache-2.0
 #
 # The OpenSearch Contributors require contributions made to
@@ -7,7 +8,6 @@
 # Modifications Copyright OpenSearch Contributors. See
 # GitHub history for details.
 
-import os
 from unittest import TestCase
 
 from opensearchpy import OpenSearch
@@ -15,11 +15,10 @@ from opensearchpy.helpers.test import OPENSEARCH_URL
 
 
 class TestSecurity(TestCase):
-    def test_security(self) -> None:
-        password = os.environ.get("OPENSEARCH_INITIAL_ADMIN_PASSWORD", "admin")
+    def test_security(self):
         client = OpenSearch(
             OPENSEARCH_URL,
-            http_auth=("admin", password),
+            http_auth=("admin", "admin"),
             verify_certs=False,
         )
 

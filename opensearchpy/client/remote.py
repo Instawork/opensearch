@@ -25,14 +25,12 @@
 #  under the License.
 
 
-from typing import Any
-
 from .utils import NamespacedClient, query_params
 
 
 class RemoteClient(NamespacedClient):
     @query_params()
-    def info(self, params: Any = None, headers: Any = None) -> Any:
+    def info(self, params=None, headers=None):
         return self.transport.perform_request(
             "GET", "/_remote/info", params=params, headers=headers
         )

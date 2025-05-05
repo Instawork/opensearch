@@ -13,11 +13,8 @@ import asyncio
 import os
 import ssl
 import warnings
-from typing import Any, Collection, Mapping, Optional, Union
 
-import yarl
-
-from .._async._extra_imports import aiohttp, aiohttp_exceptions  # type: ignore
+from .._async._extra_imports import aiohttp, aiohttp_exceptions
 from .._async.compat import get_running_loop
 from .._async.http_aiohttp import AIOHttpConnection
 from ..compat import reraise_exceptions, string_types, urlencode
@@ -33,29 +30,27 @@ SSL_SHOW_WARN_DEFAULT = object()
 
 
 class AsyncHttpConnection(AIOHttpConnection):
-    session: Optional[aiohttp.ClientSession]
-
     def __init__(
         self,
-        host: str = "localhost",
-        port: Optional[int] = None,
-        http_auth: Any = None,
-        use_ssl: bool = False,
-        verify_certs: Any = VERIFY_CERTS_DEFAULT,
-        ssl_show_warn: Any = SSL_SHOW_WARN_DEFAULT,
-        ca_certs: Any = None,
-        client_cert: Any = None,
-        client_key: Any = None,
-        ssl_version: Any = None,
-        ssl_assert_fingerprint: Any = None,
-        maxsize: Optional[int] = 10,
-        headers: Optional[Mapping[str, str]] = None,
-        ssl_context: Any = None,
-        http_compress: Optional[bool] = None,
-        opaque_id: Optional[str] = None,
-        loop: Any = None,
-        **kwargs: Any,
-    ) -> None:
+        host="localhost",
+        port=None,
+        http_auth=None,
+        use_ssl=False,
+        verify_certs=VERIFY_CERTS_DEFAULT,
+        ssl_show_warn=SSL_SHOW_WARN_DEFAULT,
+        ca_certs=None,
+        client_cert=None,
+        client_key=None,
+        ssl_version=None,
+        ssl_assert_fingerprint=None,
+        maxsize=10,
+        headers=None,
+        ssl_context=None,
+        http_compress=None,
+        opaque_id=None,
+        loop=None,
+        **kwargs
+    ):
         self.headers = {}
 
         super().__init__(
@@ -65,15 +60,14 @@ class AsyncHttpConnection(AIOHttpConnection):
             headers=headers,
             http_compress=http_compress,
             opaque_id=opaque_id,
-            **kwargs,
+            **kwargs
         )
 
         if http_auth is not None:
             if isinstance(http_auth, (tuple, list)):
-                http_auth = aiohttp.BasicAuth(login=http_auth[0], password=http_auth[1])
+                http_auth = ":".join(http_auth)
             elif isinstance(http_auth, string_types):
-                login, password = http_auth.split(":", 1)  # type: ignore
-                http_auth = aiohttp.BasicAuth(login=login, password=password)
+                http_auth = tuple(http_auth.split(":", 1))
 
         # if providing an SSL context, raise error if any other SSL related flag is used
         if ssl_context and (
@@ -144,25 +138,14 @@ class AsyncHttpConnection(AIOHttpConnection):
         self.loop = loop
         self.session = None
 
-        # Align with Sync Interface
-        if "pool_maxsize" in kwargs:
-            maxsize = kwargs.pop("pool_maxsize")
-
         # Parameters for creating an aiohttp.ClientSession later.
         self._limit = maxsize
         self._http_auth = http_auth
         self._ssl_context = ssl_context
 
     async def perform_request(
-        self,
-        method: str,
-        url: str,
-        params: Optional[Mapping[str, Any]] = None,
-        body: Optional[bytes] = None,
-        timeout: Optional[Union[int, float]] = None,
-        ignore: Collection[int] = (),
-        headers: Optional[Mapping[str, str]] = None,
-    ) -> Any:
+        self, method, url, params=None, body=None, timeout=None, ignore=(), headers=None
+    ):
         if self.session is None:
             await self._create_aiohttp_session()
         assert self.session is not None
@@ -172,6 +155,14 @@ class AsyncHttpConnection(AIOHttpConnection):
             query_string = urlencode(params)
         else:
             query_string = ""
+
+        # There is a bug in aiohttp that disables the re-use
+        # of the connection in the pool when method=HEAD.
+        # See: https://github.com/aio-libs/aiohttp/issues/1769
+        is_head = False
+        if method == "HEAD":
+            method = "GET"
+            is_head = True
 
         # Top-tier tip-toeing happening here. Basically
         # because Pip's old resolver is bad and wipes out
@@ -184,7 +175,7 @@ class AsyncHttpConnection(AIOHttpConnection):
         # then we pass a string into ClientSession.request() instead.
         url = self.url_prefix + url
         if query_string:
-            url = f"{url}?{query_string}"
+            url = "%s?%s" % (url, query_string)
         url = self.host + url
 
         timeout = aiohttp.ClientTimeout(
@@ -199,27 +190,26 @@ class AsyncHttpConnection(AIOHttpConnection):
             body = self._gzip_compress(body)
             req_headers["content-encoding"] = "gzip"
 
-        auth = (
-            self._http_auth if isinstance(self._http_auth, aiohttp.BasicAuth) else None
-        )
-        if callable(self._http_auth):
-            req_headers = {
-                **req_headers,
-                **self._http_auth(method, url, query_string, body),
-            }
+        req_headers = {
+            **req_headers,
+            **self._http_auth(method, url, query_string, body),
+        }
 
         start = self.loop.time()
         try:
             async with self.session.request(
                 method,
-                yarl.URL(url, encoded=True),
+                url,
                 data=body,
-                auth=auth,
                 headers=req_headers,
                 timeout=timeout,
                 fingerprint=self.ssl_assert_fingerprint,
             ) as response:
-                raw_data = await response.text()
+                if is_head:  # We actually called 'GET' so throw away the data.
+                    await response.release()
+                    raw_data = ""
+                else:
+                    raw_data = await response.text()
                 duration = self.loop.time() - start
 
         # We want to reraise a cancellation or recursion error.
@@ -265,15 +255,14 @@ class AsyncHttpConnection(AIOHttpConnection):
 
         return response.status, response.headers, raw_data
 
-    async def close(self) -> Any:
+    async def close(self):
         """
         Explicitly closes connection
         """
         if self.session:
             await self.session.close()
-            self.session = None
 
-    async def _create_aiohttp_session(self) -> Any:
+    async def _create_aiohttp_session(self):
         """Creates an aiohttp.ClientSession(). This is delayed until
         the first call to perform_request() so that AsyncTransport has
         a chance to set AIOHttpConnection.loop
@@ -293,8 +282,8 @@ class AsyncHttpConnection(AIOHttpConnection):
         )
 
 
-class OpenSearchClientResponse(aiohttp.ClientResponse):  # type: ignore
-    async def text(self, encoding: Any = None, errors: str = "strict") -> Any:
+class OpenSearchClientResponse(aiohttp.ClientResponse):
+    async def text(self, encoding=None, errors="strict"):
         if self._body is None:
             await self.read()
 

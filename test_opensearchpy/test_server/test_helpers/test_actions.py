@@ -25,8 +25,7 @@
 #  under the License.
 
 
-from typing import Any
-from unittest.mock import patch
+from mock import patch
 
 from opensearchpy import TransportError, helpers
 from opensearchpy.helpers import ScanError
@@ -35,20 +34,17 @@ from ...test_cases import SkipTest
 from .. import OpenSearchTestCase
 
 
-class FailingBulkClient:
+class FailingBulkClient(object):
     def __init__(
-        self,
-        client: Any,
-        fail_at: Any = (2,),
-        fail_with: Any = TransportError(599, "Error!", {}),
-    ) -> None:
+        self, client, fail_at=(2,), fail_with=TransportError(599, "Error!", {})
+    ):
         self.client = client
         self._called = 0
         self._fail_at = fail_at
         self.transport = client.transport
         self._fail_with = fail_with
 
-    def bulk(self, *args: Any, **kwargs: Any) -> Any:
+    def bulk(self, *args, **kwargs):
         self._called += 1
         if self._called in self._fail_at:
             raise self._fail_with
@@ -56,15 +52,17 @@ class FailingBulkClient:
 
 
 class TestStreamingBulk(OpenSearchTestCase):
-    def test_actions_remain_unchanged(self) -> None:
+    def test_actions_remain_unchanged(self):
         actions = [{"_id": 1}, {"_id": 2}]
-        for ok, _ in helpers.streaming_bulk(self.client, actions, index="test-index"):
+        for ok, item in helpers.streaming_bulk(
+            self.client, actions, index="test-index"
+        ):
             self.assertTrue(ok)
         self.assertEqual([{"_id": 1}, {"_id": 2}], actions)
 
-    def test_all_documents_get_inserted(self) -> None:
+    def test_all_documents_get_inserted(self):
         docs = [{"answer": x, "_id": x} for x in range(100)]
-        for ok, _ in helpers.streaming_bulk(
+        for ok, item in helpers.streaming_bulk(
             self.client, docs, index="test-index", refresh=True
         ):
             self.assertTrue(ok)
@@ -74,7 +72,7 @@ class TestStreamingBulk(OpenSearchTestCase):
             {"answer": 42}, self.client.get(index="test-index", id=42)["_source"]
         )
 
-    def test_all_errors_from_chunk_are_raised_on_failure(self) -> None:
+    def test_all_errors_from_chunk_are_raised_on_failure(self):
         self.client.indices.create(
             "i",
             {
@@ -85,7 +83,7 @@ class TestStreamingBulk(OpenSearchTestCase):
         self.client.cluster.health(wait_for_status="yellow")
 
         try:
-            for ok, _ in helpers.streaming_bulk(
+            for ok, item in helpers.streaming_bulk(
                 self.client, [{"a": "b"}, {"a": "c"}], index="i", raise_on_error=True
             ):
                 self.assertTrue(ok)
@@ -94,7 +92,7 @@ class TestStreamingBulk(OpenSearchTestCase):
         else:
             assert False, "exception should have been raised"
 
-    def test_different_op_types(self) -> Any:
+    def test_different_op_types(self):
         if self.opensearch_version() < (0, 90, 1):
             raise SkipTest("update supported since 0.90.1")
         self.client.index(index="i", id=45, body={})
@@ -109,14 +107,14 @@ class TestStreamingBulk(OpenSearchTestCase):
                 "doc": {"answer": 42},
             },
         ]
-        for ok, _ in helpers.streaming_bulk(self.client, docs):
+        for ok, item in helpers.streaming_bulk(self.client, docs):
             self.assertTrue(ok)
 
         self.assertFalse(self.client.exists(index="i", id=45))
         self.assertEqual({"answer": 42}, self.client.get(index="i", id=42)["_source"])
         self.assertEqual({"f": "v"}, self.client.get(index="i", id=47)["_source"])
 
-    def test_transport_error_can_becaught(self) -> None:
+    def test_transport_error_can_becaught(self):
         failing_client = FailingBulkClient(self.client)
         docs = [
             {"_index": "i", "_id": 47, "f": "v"},
@@ -152,7 +150,7 @@ class TestStreamingBulk(OpenSearchTestCase):
             results[1][1],
         )
 
-    def test_rejected_documents_are_retried(self) -> None:
+    def test_rejected_documents_are_retried(self):
         failing_client = FailingBulkClient(
             self.client, fail_with=TransportError(429, "Rejected!", {})
         )
@@ -179,7 +177,7 @@ class TestStreamingBulk(OpenSearchTestCase):
         self.assertEqual({"value": 3, "relation": "eq"}, res["hits"]["total"])
         self.assertEqual(4, failing_client._called)
 
-    def test_rejected_documents_are_retried_at_most_max_retries_times(self) -> None:
+    def test_rejected_documents_are_retried_at_most_max_retries_times(self):
         failing_client = FailingBulkClient(
             self.client, fail_at=(1, 2), fail_with=TransportError(429, "Rejected!", {})
         )
@@ -207,14 +205,14 @@ class TestStreamingBulk(OpenSearchTestCase):
         self.assertEqual({"value": 2, "relation": "eq"}, res["hits"]["total"])
         self.assertEqual(4, failing_client._called)
 
-    def test_transport_error_is_raised_with_max_retries(self) -> None:
+    def test_transport_error_is_raised_with_max_retries(self):
         failing_client = FailingBulkClient(
             self.client,
             fail_at=(1, 2, 3, 4),
             fail_with=TransportError(429, "Rejected!", {}),
         )
 
-        def streaming_bulk() -> Any:
+        def streaming_bulk():
             results = list(
                 helpers.streaming_bulk(
                     failing_client,
@@ -231,7 +229,7 @@ class TestStreamingBulk(OpenSearchTestCase):
 
 
 class TestBulk(OpenSearchTestCase):
-    def test_bulk_works_with_single_item(self) -> None:
+    def test_bulk_works_with_single_item(self):
         docs = [{"answer": 42, "_id": 1}]
         success, failed = helpers.bulk(
             self.client, docs, index="test-index", refresh=True
@@ -244,7 +242,7 @@ class TestBulk(OpenSearchTestCase):
             {"answer": 42}, self.client.get(index="test-index", id=1)["_source"]
         )
 
-    def test_all_documents_get_inserted(self) -> None:
+    def test_all_documents_get_inserted(self):
         docs = [{"answer": x, "_id": x} for x in range(100)]
         success, failed = helpers.bulk(
             self.client, docs, index="test-index", refresh=True
@@ -257,7 +255,7 @@ class TestBulk(OpenSearchTestCase):
             {"answer": 42}, self.client.get(index="test-index", id=42)["_source"]
         )
 
-    def test_stats_only_reports_numbers(self) -> None:
+    def test_stats_only_reports_numbers(self):
         docs = [{"answer": x} for x in range(100)]
         success, failed = helpers.bulk(
             self.client, docs, index="test-index", refresh=True, stats_only=True
@@ -267,7 +265,7 @@ class TestBulk(OpenSearchTestCase):
         self.assertEqual(0, failed)
         self.assertEqual(100, self.client.count(index="test-index")["count"])
 
-    def test_errors_are_reported_correctly(self) -> None:
+    def test_errors_are_reported_correctly(self):
         self.client.indices.create(
             "i",
             {
@@ -294,7 +292,7 @@ class TestBulk(OpenSearchTestCase):
             or "mapper_parsing_exception" in repr(error["index"]["error"])
         )
 
-    def test_error_is_raised(self) -> None:
+    def test_error_is_raised(self):
         self.client.indices.create(
             "i",
             {
@@ -312,7 +310,7 @@ class TestBulk(OpenSearchTestCase):
             index="i",
         )
 
-    def test_ignore_error_if_raised(self) -> None:
+    def test_ignore_error_if_raised(self):
         # ignore the status code 400 in tuple
         helpers.bulk(
             self.client, [{"a": 42}, {"a": "c"}], index="i", ignore_status=(400,)
@@ -345,7 +343,7 @@ class TestBulk(OpenSearchTestCase):
         failing_client = FailingBulkClient(self.client)
         helpers.bulk(failing_client, [{"a": 42}], index="i", ignore_status=(599,))
 
-    def test_errors_are_collected_properly(self) -> None:
+    def test_errors_are_collected_properly(self):
         self.client.indices.create(
             "i",
             {
@@ -380,12 +378,12 @@ class TestScan(OpenSearchTestCase):
         },
     ]
 
-    def teardown_method(self, m: Any) -> None:
+    def teardown_method(self, m):
         self.client.transport.perform_request("DELETE", "/_search/scroll/_all")
-        super().teardown_method(m)
+        super(TestScan, self).teardown_method(m)
 
-    def test_order_can_be_preserved(self) -> None:
-        bulk: Any = []
+    def test_order_can_be_preserved(self):
+        bulk = []
         for x in range(100):
             bulk.append({"index": {"_index": "test_index", "_id": x}})
             bulk.append({"answer": x, "correct": x == 42})
@@ -404,8 +402,8 @@ class TestScan(OpenSearchTestCase):
         self.assertEqual(list(map(str, range(100))), list(d["_id"] for d in docs))
         self.assertEqual(list(range(100)), list(d["_source"]["answer"] for d in docs))
 
-    def test_all_documents_are_read(self) -> None:
-        bulk: Any = []
+    def test_all_documents_are_read(self):
+        bulk = []
         for x in range(100):
             bulk.append({"index": {"_index": "test_index", "_id": x}})
             bulk.append({"answer": x, "correct": x == 42})
@@ -414,11 +412,11 @@ class TestScan(OpenSearchTestCase):
         docs = list(helpers.scan(self.client, index="test_index", size=2))
 
         self.assertEqual(100, len(docs))
-        self.assertEqual(set(map(str, range(100))), {d["_id"] for d in docs})
-        self.assertEqual(set(range(100)), {d["_source"]["answer"] for d in docs})
+        self.assertEqual(set(map(str, range(100))), set(d["_id"] for d in docs))
+        self.assertEqual(set(range(100)), set(d["_source"]["answer"] for d in docs))
 
-    def test_scroll_error(self) -> None:
-        bulk: Any = []
+    def test_scroll_error(self):
+        bulk = []
         for x in range(4):
             bulk.append({"index": {"_index": "test_index"}})
             bulk.append({"value": x})
@@ -452,7 +450,7 @@ class TestScan(OpenSearchTestCase):
             self.assertEqual(len(data), 3)
             self.assertEqual(data[-1], {"scroll_data": 42})
 
-    def test_initial_search_error(self) -> None:
+    def test_initial_search_error(self):
         with patch.object(self, "client") as client_mock:
             client_mock.search.return_value = {
                 "_scroll_id": "dummy_id",
@@ -478,7 +476,7 @@ class TestScan(OpenSearchTestCase):
                 self.assertEqual(data, [{"search_data": 1}])
                 client_mock.scroll.assert_not_called()
 
-    def test_no_scroll_id_fast_route(self) -> None:
+    def test_no_scroll_id_fast_route(self):
         with patch.object(self, "client") as client_mock:
             client_mock.search.return_value = {"no": "_scroll_id"}
             data = list(helpers.scan(self.client, index="test_index"))
@@ -487,7 +485,7 @@ class TestScan(OpenSearchTestCase):
             client_mock.scroll.assert_not_called()
             client_mock.clear_scroll.assert_not_called()
 
-    def test_scan_auth_kwargs_forwarded(self) -> None:
+    def test_scan_auth_kwargs_forwarded(self):
         for key, val in {
             "api_key": ("name", "value"),
             "http_auth": ("username", "password"),
@@ -506,9 +504,7 @@ class TestScan(OpenSearchTestCase):
                 }
                 client_mock.clear_scroll.return_value = {}
 
-                data = list(
-                    helpers.scan(self.client, index="test_index", **{key: val})  # type: ignore
-                )
+                data = list(helpers.scan(self.client, index="test_index", **{key: val}))
 
                 self.assertEqual(data, [{"search_data": 1}])
 
@@ -521,7 +517,7 @@ class TestScan(OpenSearchTestCase):
                 ):
                     self.assertEqual(api_mock.call_args[1][key], val)
 
-    def test_scan_auth_kwargs_favor_scroll_kwargs_option(self) -> None:
+    def test_scan_auth_kwargs_favor_scroll_kwargs_option(self):
         with patch.object(self, "client") as client_mock:
             client_mock.search.return_value = {
                 "_scroll_id": "scroll_id",
@@ -553,8 +549,8 @@ class TestScan(OpenSearchTestCase):
             self.assertEqual(client_mock.scroll.call_args[1]["sort"], "asc")
 
     @patch("opensearchpy.helpers.actions.logger")
-    def test_logger(self, logger_mock: Any) -> None:
-        bulk: Any = []
+    def test_logger(self, logger_mock):
+        bulk = []
         for x in range(4):
             bulk.append({"index": {"_index": "test_index"}})
             bulk.append({"value": x})
@@ -588,8 +584,8 @@ class TestScan(OpenSearchTestCase):
                 pass
             logger_mock.warning.assert_called()
 
-    def test_clear_scroll(self) -> None:
-        bulk: Any = []
+    def test_clear_scroll(self):
+        bulk = []
         for x in range(4):
             bulk.append({"index": {"_index": "test_index"}})
             bulk.append({"value": x})
@@ -615,7 +611,7 @@ class TestScan(OpenSearchTestCase):
             )
             spy.assert_not_called()
 
-    def test_shards_no_skipped_field(self) -> None:
+    def test_shards_no_skipped_field(self):
         with patch.object(self, "client") as client_mock:
             client_mock.search.return_value = {
                 "_scroll_id": "dummy_id",
@@ -644,8 +640,8 @@ class TestScan(OpenSearchTestCase):
 
 
 class TestReindex(OpenSearchTestCase):
-    def setup_method(self, _: Any) -> None:
-        bulk: Any = []
+    def setup_method(self, _):
+        bulk = []
         for x in range(100):
             bulk.append({"index": {"_index": "test_index", "_id": x}})
             bulk.append(
@@ -657,7 +653,7 @@ class TestReindex(OpenSearchTestCase):
             )
         self.client.bulk(bulk, refresh=True)
 
-    def test_reindex_passes_kwargs_to_scan_and_bulk(self) -> None:
+    def test_reindex_passes_kwargs_to_scan_and_bulk(self):
         helpers.reindex(
             self.client,
             "test_index",
@@ -676,7 +672,7 @@ class TestReindex(OpenSearchTestCase):
             self.client.get(index="prod_index", id=42)["_source"],
         )
 
-    def test_reindex_accepts_a_query(self) -> None:
+    def test_reindex_accepts_a_query(self):
         helpers.reindex(
             self.client,
             "test_index",
@@ -695,7 +691,7 @@ class TestReindex(OpenSearchTestCase):
             self.client.get(index="prod_index", id=42)["_source"],
         )
 
-    def test_all_documents_get_moved(self) -> None:
+    def test_all_documents_get_moved(self):
         helpers.reindex(self.client, "test_index", "prod_index")
         self.client.indices.refresh()
 
@@ -714,7 +710,7 @@ class TestReindex(OpenSearchTestCase):
 
 
 class TestParentChildReindex(OpenSearchTestCase):
-    def setup_method(self, _: Any) -> None:
+    def setup_method(self, _):
         body = {
             "settings": {"number_of_shards": 1, "number_of_replicas": 0},
             "mappings": {
@@ -740,7 +736,7 @@ class TestParentChildReindex(OpenSearchTestCase):
         )
         self.client.indices.refresh(index="test-index")
 
-    def test_children_are_reindexed_correctly(self) -> None:
+    def test_children_are_reindexed_correctly(self):
         helpers.reindex(self.client, "test-index", "real-index")
 
         self.assertEqual(

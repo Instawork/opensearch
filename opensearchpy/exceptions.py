@@ -25,8 +25,6 @@
 #  under the License.
 
 
-from typing import Any, Dict, Type, Union
-
 __all__ = [
     "ImproperlyConfigured",
     "OpenSearchException",
@@ -77,33 +75,32 @@ class TransportError(OpenSearchException):
     """
 
     @property
-    def status_code(self) -> Union[str, int]:
+    def status_code(self):
         """
         The HTTP status code of the response that precipitated the error or
         ``'N/A'`` if not applicable.
         """
-        return self.args[0]  # type: ignore
+        return self.args[0]
 
     @property
-    def error(self) -> str:
+    def error(self):
         """A string error message."""
-        return self.args[1]  # type: ignore
+        return self.args[1]
 
     @property
-    def info(self) -> Union[Dict[str, Any], Exception, Any]:
+    def info(self):
         """
         Dict of returned error info from OpenSearch, where available, underlying
         exception when not.
         """
         return self.args[2]
 
-    def __str__(self) -> str:
+    def __str__(self):
         cause = ""
         try:
-            if self.info and isinstance(self.info, dict) and "error" in self.info:
-                error = self.info["error"]
-                if isinstance(error, dict):
-                    root_cause = error["root_cause"][0]
+            if self.info and "error" in self.info:
+                if isinstance(self.info["error"], dict):
+                    root_cause = self.info["error"]["root_cause"][0]
                     cause = ", ".join(
                         filter(
                             None,
@@ -120,7 +117,7 @@ class TransportError(OpenSearchException):
         except LookupError:
             pass
         msg = ", ".join(filter(None, [str(self.status_code), repr(self.error), cause]))
-        return f"{self.__class__.__name__}({msg})"
+        return "%s(%s)" % (self.__class__.__name__, msg)
 
 
 class ConnectionError(TransportError):
@@ -130,8 +127,8 @@ class ConnectionError(TransportError):
     implementation is available as ``.info``.
     """
 
-    def __str__(self) -> str:
-        return "ConnectionError({}) caused by: {}({})".format(
+    def __str__(self):
+        return "ConnectionError(%s) caused by: %s(%s)" % (
             self.error,
             self.info.__class__.__name__,
             self.info,
@@ -145,8 +142,8 @@ class SSLError(ConnectionError):
 class ConnectionTimeout(ConnectionError):
     """A network timeout. Doesn't cause a node retry by default."""
 
-    def __str__(self) -> str:
-        return "ConnectionTimeout caused by - {}({})".format(
+    def __str__(self):
+        return "ConnectionTimeout caused by - %s(%s)" % (
             self.info.__class__.__name__,
             self.info,
         )
@@ -201,7 +198,7 @@ OpenSearchDeprecationWarning = OpenSearchWarning
 
 
 # more generic mappings from status_code to python exceptions
-HTTP_EXCEPTIONS: Dict[int, Type[OpenSearchException]] = {
+HTTP_EXCEPTIONS = {
     400: RequestError,
     401: AuthenticationException,
     403: AuthorizationException,

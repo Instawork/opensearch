@@ -24,12 +24,10 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-from typing import Any
-
 from opensearchpy import analyzer, token_filter, tokenizer
 
 
-def test_simulate_with_just__builtin_tokenizer(client: Any) -> None:
+def test_simulate_with_just__builtin_tokenizer(client):
     a = analyzer("my-analyzer", tokenizer="keyword")
     tokens = a.simulate("Hello World!", using=client).tokens
 
@@ -37,7 +35,7 @@ def test_simulate_with_just__builtin_tokenizer(client: Any) -> None:
     assert tokens[0].token == "Hello World!"
 
 
-def test_simulate_complex(client: Any) -> None:
+def test_simulate_complex(client):
     a = analyzer(
         "my-analyzer",
         tokenizer=tokenizer("split_words", "simple_pattern_split", pattern=":"),
@@ -50,7 +48,7 @@ def test_simulate_complex(client: Any) -> None:
     assert ["this", "works"] == [t.token for t in tokens]
 
 
-def test_simulate_builtin(client: Any) -> None:
+def test_simulate_builtin(client):
     a = analyzer("my-analyzer", "english")
     tokens = a.simulate("fixes running").tokens
 

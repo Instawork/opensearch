@@ -24,23 +24,23 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-from typing import Any
+from six import string_types
 
 import opensearchpy
 from opensearchpy.serializer import serializer
 
 
-class Connections:
+class Connections(object):
     """
     Class responsible for holding connections to different clusters. Used as a
     singleton in this module.
     """
 
-    def __init__(self) -> None:
-        self._kwargs: Any = {}
-        self._conns: Any = {}
+    def __init__(self):
+        self._kwargs = {}
+        self._conns = {}
 
-    def configure(self, **kwargs: Any) -> None:
+    def configure(self, **kwargs):
         """
         Configure multiple connections at once, useful for passing in config
         dictionaries obtained from other sources, like Django's settings or a
@@ -63,13 +63,13 @@ class Connections:
             del self._conns[k]
         self._kwargs = kwargs
 
-    def add_connection(self, alias: str, conn: Any) -> None:
+    def add_connection(self, alias, conn):
         """
         Add a connection object, it will be passed through as-is.
         """
         self._conns[alias] = conn
 
-    def remove_connection(self, alias: str) -> None:
+    def remove_connection(self, alias):
         """
         Remove connection from the registry. Raises ``KeyError`` if connection
         wasn't found.
@@ -82,9 +82,9 @@ class Connections:
                 errors += 1
 
         if errors == 2:
-            raise KeyError(f"There is no connection with alias {alias!r}.")
+            raise KeyError("There is no connection with alias %r." % alias)
 
-    def create_connection(self, alias: str = "default", **kwargs: Any) -> Any:
+    def create_connection(self, alias="default", **kwargs):
         """
         Construct an instance of ``opensearchpy.OpenSearch`` and register
         it under given alias.
@@ -93,7 +93,7 @@ class Connections:
         conn = self._conns[alias] = opensearchpy.OpenSearch(**kwargs)
         return conn
 
-    def get_connection(self, alias: str = "default") -> Any:
+    def get_connection(self, alias="default"):
         """
         Retrieve a connection, construct it if necessary (only configuration
         was passed to us). If a non-string alias has been passed through we
@@ -104,7 +104,7 @@ class Connections:
         """
         # do not check isinstance(OpenSearch) so that people can wrap their
         # clients
-        if not isinstance(alias, str):
+        if not isinstance(alias, string_types):
             return alias
 
         # connection already established
@@ -118,7 +118,7 @@ class Connections:
             return self.create_connection(alias, **self._kwargs[alias])
         except KeyError:
             # no connection and no kwargs to set one up
-            raise KeyError(f"There is no connection with alias {alias!r}.")
+            raise KeyError("There is no connection with alias %r." % alias)
 
 
 connections = Connections()

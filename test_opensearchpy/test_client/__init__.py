@@ -25,22 +25,23 @@
 #  under the License.
 
 
+from __future__ import unicode_literals
+
 import warnings
 
-from opensearchpy.client import OpenSearch
-from opensearchpy.client.utils import _normalize_hosts
+from opensearchpy.client import OpenSearch, _normalize_hosts
 
 from ..test_cases import OpenSearchTestCase, TestCase
 
 
 class TestNormalizeHosts(TestCase):
-    def test_none_uses_defaults(self) -> None:
+    def test_none_uses_defaults(self):
         self.assertEqual([{}], _normalize_hosts(None))
 
-    def test_strings_are_used_as_hostnames(self) -> None:
+    def test_strings_are_used_as_hostnames(self):
         self.assertEqual([{"host": "elastic.co"}], _normalize_hosts(["elastic.co"]))
 
-    def test_strings_are_parsed_for_port_and_user(self) -> None:
+    def test_strings_are_parsed_for_port_and_user(self):
         self.assertEqual(
             [
                 {"host": "elastic.co", "port": 42},
@@ -49,7 +50,7 @@ class TestNormalizeHosts(TestCase):
             _normalize_hosts(["elastic.co:42", "user:secre%5D@elastic.co"]),
         )
 
-    def test_strings_are_parsed_for_scheme(self) -> None:
+    def test_strings_are_parsed_for_scheme(self):
         self.assertEqual(
             [
                 {"host": "elastic.co", "port": 42, "use_ssl": True},
@@ -66,23 +67,23 @@ class TestNormalizeHosts(TestCase):
             ),
         )
 
-    def test_dicts_are_left_unchanged(self) -> None:
+    def test_dicts_are_left_unchanged(self):
         self.assertEqual(
             [{"host": "local", "extra": 123}],
             _normalize_hosts([{"host": "local", "extra": 123}]),
         )
 
-    def test_single_string_is_wrapped_in_list(self) -> None:
+    def test_single_string_is_wrapped_in_list(self):
         self.assertEqual([{"host": "elastic.co"}], _normalize_hosts("elastic.co"))
 
 
 class TestClient(OpenSearchTestCase):
-    def test_request_timeout_is_passed_through_unescaped(self) -> None:
+    def test_request_timeout_is_passed_through_unescaped(self):
         self.client.ping(request_timeout=0.1)
         calls = self.assert_url_called("HEAD", "/")
         self.assertEqual([({"request_timeout": 0.1}, {}, None)], calls)
 
-    def test_params_is_copied_when(self) -> None:
+    def test_params_is_copied_when(self):
         rt = object()
         params = dict(request_timeout=rt)
         self.client.ping(params=params)
@@ -94,7 +95,7 @@ class TestClient(OpenSearchTestCase):
         )
         self.assertFalse(calls[0][0] is calls[1][0])
 
-    def test_headers_is_copied_when(self) -> None:
+    def test_headers_is_copied_when(self):
         hv = "value"
         headers = dict(Authentication=hv)
         self.client.ping(headers=headers)
@@ -106,40 +107,40 @@ class TestClient(OpenSearchTestCase):
         )
         self.assertFalse(calls[0][0] is calls[1][0])
 
-    def test_from_in_search(self) -> None:
+    def test_from_in_search(self):
         self.client.search(index="i", from_=10)
         calls = self.assert_url_called("POST", "/i/_search")
         self.assertEqual([({"from": "10"}, {}, None)], calls)
 
-    def test_repr_contains_hosts(self) -> None:
+    def test_repr_contains_hosts(self):
         self.assertEqual("<OpenSearch([{}])>", repr(self.client))
 
-    def test_repr_subclass(self) -> None:
+    def test_repr_subclass(self):
         class OtherOpenSearch(OpenSearch):
             pass
 
         self.assertEqual("<OtherOpenSearch([{}])>", repr(OtherOpenSearch()))
 
-    def test_repr_contains_hosts_passed_in(self) -> None:
+    def test_repr_contains_hosts_passed_in(self):
         self.assertIn("opensearchpy.org", repr(OpenSearch(["opensearch.org:123"])))
 
-    def test_repr_truncates_host_to_5(self) -> None:
+    def test_repr_truncates_host_to_5(self):
         hosts = [{"host": "opensearch" + str(i)} for i in range(10)]
         client = OpenSearch(hosts)
         self.assertNotIn("opensearch5", repr(client))
         self.assertIn("...", repr(client))
 
-    def test_index_uses_post_if_id_is_empty(self) -> None:
+    def test_index_uses_post_if_id_is_empty(self):
         self.client.index(index="my-index", id="", body={})
 
         self.assert_url_called("POST", "/my-index/_doc")
 
-    def test_index_uses_put_if_id_is_not_empty(self) -> None:
+    def test_index_uses_put_if_id_is_not_empty(self):
         self.client.index(index="my-index", id=0, body={})
 
         self.assert_url_called("PUT", "/my-index/_doc/0")
 
-    def test_tasks_get_without_task_id_deprecated(self) -> None:
+    def test_tasks_get_without_task_id_deprecated(self):
         warnings.simplefilter("always", DeprecationWarning)
         with warnings.catch_warnings(record=True) as w:
             self.client.tasks.get()
@@ -153,7 +154,7 @@ class TestClient(OpenSearchTestCase):
             "and will be removed in v8.0. Use client.tasks.list() instead.",
         )
 
-    def test_tasks_get_with_task_id_not_deprecated(self) -> None:
+    def test_tasks_get_with_task_id_not_deprecated(self):
         warnings.simplefilter("always", DeprecationWarning)
         with warnings.catch_warnings(record=True) as w:
             self.client.tasks.get("task-1")

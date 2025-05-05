@@ -24,39 +24,44 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-import collections.abc as collections_abc
 import copy
-from typing import Any
+
+try:
+    import collections.abc as collections_abc  # only works on python 3.3+
+except ImportError:
+    import collections as collections_abc
+
+from six import iteritems, string_types
 
 from opensearchpy.connection.connections import get_connection
 from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers import scan
 
 from ..exceptions import IllegalOperation
+from ..helpers.aggs import A, AggBase
 from ..helpers.query import Bool, Q
-from .aggs import A, AggBase
 from .response import Hit, Response
 from .utils import AttrDict, DslBase, recursive_to_dict
 
 
-class QueryProxy:
+class QueryProxy(object):
     """
     Simple proxy around DSL objects (queries) that can be called
     (to add query/post_filter) and also allows attribute access which is proxied to
     the wrapped query.
     """
 
-    def __init__(self, search: Any, attr_name: Any) -> None:
+    def __init__(self, search, attr_name):
         self._search = search
-        self._proxied: Any = None
+        self._proxied = None
         self._attr_name = attr_name
 
-    def __nonzero__(self) -> bool:
+    def __nonzero__(self):
         return self._proxied is not None
 
     __bool__ = __nonzero__
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+    def __call__(self, *args, **kwargs):
         s = self._search._clone()
 
         # we cannot use self._proxied since we just cloned self._search and
@@ -70,23 +75,23 @@ class QueryProxy:
         # always return search to be chainable
         return s
 
-    def __getattr__(self, attr_name: Any) -> Any:
+    def __getattr__(self, attr_name):
         return getattr(self._proxied, attr_name)
 
-    def __setattr__(self, attr_name: Any, value: Any) -> None:
+    def __setattr__(self, attr_name, value):
         if not attr_name.startswith("_"):
             self._proxied = Q(self._proxied.to_dict())
             setattr(self._proxied, attr_name, value)
-        super().__setattr__(attr_name, value)
+        super(QueryProxy, self).__setattr__(attr_name, value)
 
-    def __getstate__(self) -> Any:
+    def __getstate__(self):
         return self._search, self._proxied, self._attr_name
 
-    def __setstate__(self, state: Any) -> None:
+    def __setstate__(self, state):
         self._search, self._proxied, self._attr_name = state
 
 
-class ProxyDescriptor:
+class ProxyDescriptor(object):
     """
     Simple descriptor to enable setting of queries and filters as:
 
@@ -95,13 +100,13 @@ class ProxyDescriptor:
 
     """
 
-    def __init__(self, name: str) -> None:
-        self._attr_name = f"_{name}_proxy"
+    def __init__(self, name):
+        self._attr_name = "_%s_proxy" % name
 
-    def __get__(self, instance: Any, owner: Any) -> Any:
+    def __get__(self, instance, owner):
         return getattr(instance, self._attr_name)
 
-    def __set__(self, instance: Any, value: Any) -> None:
+    def __set__(self, instance, value):
         proxy = getattr(instance, self._attr_name)
         proxy._proxied = Q(value)
 
@@ -109,26 +114,17 @@ class ProxyDescriptor:
 class AggsProxy(AggBase, DslBase):
     name = "aggs"
 
-    def __init__(self, search: Any) -> None:
+    def __init__(self, search):
         self._base = self
         self._search = search
         self._params = {"aggs": {}}
 
-    def to_dict(self) -> Any:
-        return super().to_dict().get("aggs", {})
+    def to_dict(self):
+        return super(AggsProxy, self).to_dict().get("aggs", {})
 
 
-class Request:
-    _doc_type: Any
-    _doc_type_map: Any
-
-    def __init__(
-        self,
-        using: str = "default",
-        index: Any = None,
-        doc_type: Any = None,
-        extra: Any = None,
-    ) -> None:
+class Request(object):
+    def __init__(self, using="default", index=None, doc_type=None, extra=None):
         self._using = using
 
         self._index = None
@@ -147,22 +143,22 @@ class Request:
         elif doc_type:
             self._doc_type.append(doc_type)
 
-        self._params: Any = {}
-        self._extra: Any = extra or {}
+        self._params = {}
+        self._extra = extra or {}
 
-    def __eq__(self: Any, other: Any) -> bool:
+    def __eq__(self, other):
         return (
             isinstance(other, Request)
             and other._params == self._params
             and other._index == self._index
             and other._doc_type == self._doc_type
-            and other.to_dict() == self.to_dict()  # type: ignore
+            and other.to_dict() == self.to_dict()
         )
 
-    def __copy__(self) -> Any:
+    def __copy__(self):
         return self._clone()
 
-    def params(self, **kwargs: Any) -> Any:
+    def params(self, **kwargs):
         """
         Specify query params to be used when executing the search. All the
         keyword arguments will override the current values.
@@ -176,7 +172,7 @@ class Request:
         s._params.update(kwargs)
         return s
 
-    def index(self, *index: Any) -> Any:
+    def index(self, *index):
         """
         Set the index for the search. If called empty it will remove all information.
 
@@ -193,7 +189,7 @@ class Request:
         else:
             indexes = []
             for i in index:
-                if isinstance(i, str):
+                if isinstance(i, string_types):
                     indexes.append(i)
                 elif isinstance(i, list):
                     indexes += i
@@ -204,7 +200,7 @@ class Request:
 
         return s
 
-    def _resolve_field(self, path: Any) -> Any:
+    def _resolve_field(self, path):
         for dt in self._doc_type:
             if not hasattr(dt, "_index"):
                 continue
@@ -212,10 +208,10 @@ class Request:
             if field is not None:
                 return field
 
-    def _resolve_nested(self, hit: Any, parent_class: Any = None) -> Any:
+    def _resolve_nested(self, hit, parent_class=None):
         doc_class = Hit
 
-        nested_path: Any = []
+        nested_path = []
         nesting = hit["_nested"]
         while nesting and "field" in nesting:
             nested_path.append(nesting["field"])
@@ -232,7 +228,7 @@ class Request:
 
         return doc_class
 
-    def _get_result(self, hit: Any, parent_class: Any = None) -> Any:
+    def _get_result(self, hit, parent_class=None):
         doc_class = Hit
         dt = hit.get("_type")
 
@@ -256,7 +252,7 @@ class Request:
         callback = getattr(doc_class, "from_opensearch", doc_class)
         return callback(hit)
 
-    def doc_type(self, *doc_type: Any, **kwargs: Any) -> Any:
+    def doc_type(self, *doc_type, **kwargs):
         """
         Set the type to search through. You can supply a single value or
         multiple. Values can be strings or subclasses of ``Document``.
@@ -282,7 +278,7 @@ class Request:
             s._doc_type_map.update(kwargs)
         return s
 
-    def using(self, client: Any) -> Any:
+    def using(self, client):
         """
         Associate the search request with an opensearch client. A fresh copy
         will be returned with current instance remaining unchanged.
@@ -295,7 +291,7 @@ class Request:
         s._using = client
         return s
 
-    def extra(self, **kwargs: Any) -> Any:
+    def extra(self, **kwargs):
         """
         Add extra keys to the request body. Mostly here for backwards
         compatibility.
@@ -306,7 +302,7 @@ class Request:
         s._extra.update(kwargs)
         return s
 
-    def _clone(self) -> Any:
+    def _clone(self):
         s = self.__class__(
             using=self._using, index=self._index, doc_type=self._doc_type
         )
@@ -320,7 +316,7 @@ class Search(Request):
     query = ProxyDescriptor("query")
     post_filter = ProxyDescriptor("post_filter")
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """
         Search request to opensearch.
 
@@ -331,34 +327,33 @@ class Search(Request):
         All the parameters supplied (or omitted) at creation type can be later
         overridden by methods (`using`, `index` and `doc_type` respectively).
         """
-        super().__init__(**kwargs)
+        super(Search, self).__init__(**kwargs)
 
         self.aggs = AggsProxy(self)
-        self._sort: Any = []
-        self._collapse: Any = {}
-        self._source: Any = None
-        self._highlight: Any = {}
-        self._highlight_opts: Any = {}
-        self._suggest: Any = {}
-        self._script_fields: Any = {}
+        self._sort = []
+        self._source = None
+        self._highlight = {}
+        self._highlight_opts = {}
+        self._suggest = {}
+        self._script_fields = {}
         self._response_class = Response
 
         self._query_proxy = QueryProxy(self, "query")
         self._post_filter_proxy = QueryProxy(self, "post_filter")
 
-    def filter(self, *args: Any, **kwargs: Any) -> Any:
+    def filter(self, *args, **kwargs):
         return self.query(Bool(filter=[Q(*args, **kwargs)]))
 
-    def exclude(self, *args: Any, **kwargs: Any) -> Any:
+    def exclude(self, *args, **kwargs):
         return self.query(Bool(filter=[~Q(*args, **kwargs)]))
 
-    def __iter__(self) -> Any:
+    def __iter__(self):
         """
         Iterate over the hits.
         """
         return iter(self.execute())
 
-    def __getitem__(self, n: Any) -> Any:
+    def __getitem__(self, n):
         """
         Support slicing the `Search` instance for pagination.
 
@@ -393,7 +388,7 @@ class Search(Request):
             return s
 
     @classmethod
-    def from_dict(cls, d: Any) -> Any:
+    def from_dict(cls, d):
         """
         Construct a new `Search` instance from a raw dict containing the search
         body. Useful when migrating from raw dictionaries.
@@ -414,13 +409,13 @@ class Search(Request):
         s.update_from_dict(d)
         return s
 
-    def _clone(self) -> Any:
+    def _clone(self):
         """
         Return a clone of the current search request. Performs a shallow copy
         of all the underlying objects. Used internally by most state modifying
         APIs.
         """
-        s = super()._clone()
+        s = super(Search, self)._clone()
 
         s._response_class = self._response_class
         s._sort = self._sort[:]
@@ -429,7 +424,6 @@ class Search(Request):
         s._highlight_opts = self._highlight_opts.copy()
         s._suggest = self._suggest.copy()
         s._script_fields = self._script_fields.copy()
-        s._collapse = self._collapse.copy()
         for x in ("query", "post_filter"):
             getattr(s, x)._proxied = getattr(self, x)._proxied
 
@@ -438,7 +432,7 @@ class Search(Request):
             s.aggs._params = {"aggs": self.aggs._params["aggs"].copy()}
         return s
 
-    def response_class(self, cls: Any) -> Any:
+    def response_class(self, cls):
         """
         Override the default wrapper used for the response.
         """
@@ -446,7 +440,7 @@ class Search(Request):
         s._response_class = cls
         return s
 
-    def update_from_dict(self, d: Any) -> "Search":
+    def update_from_dict(self, d):
         """
         Apply options from a serialized body to the current instance. Modifies
         the object in-place. Used mostly by ``from_dict``.
@@ -460,7 +454,7 @@ class Search(Request):
         aggs = d.pop("aggs", d.pop("aggregations", {}))
         if aggs:
             self.aggs._params = {
-                "aggs": {name: A(value) for (name, value) in aggs.items()}
+                "aggs": {name: A(value) for (name, value) in iteritems(aggs)}
             }
         if "sort" in d:
             self._sort = d.pop("sort")
@@ -481,7 +475,7 @@ class Search(Request):
         self._extra.update(d)
         return self
 
-    def script_fields(self, **kwargs: Any) -> Any:
+    def script_fields(self, **kwargs):
         """
         Define script fields to be calculated on hits.
 
@@ -502,12 +496,12 @@ class Search(Request):
         """
         s = self._clone()
         for name in kwargs:
-            if isinstance(kwargs[name], str):
+            if isinstance(kwargs[name], string_types):
                 kwargs[name] = {"script": kwargs[name]}
         s._script_fields.update(kwargs)
         return s
 
-    def source(self, fields: Any = None, **kwargs: Any) -> Any:
+    def source(self, fields=None, **kwargs):
         """
         Selectively control how the _source field is returned.
 
@@ -552,7 +546,7 @@ class Search(Request):
 
         return s
 
-    def sort(self, *keys: Any) -> Any:
+    def sort(self, *keys):
         """
         Add sorting information to the search request. If called without
         arguments it will remove all sort requirements. Otherwise it will
@@ -578,42 +572,14 @@ class Search(Request):
         s = self._clone()
         s._sort = []
         for k in keys:
-            if isinstance(k, str) and k.startswith("-"):
+            if isinstance(k, string_types) and k.startswith("-"):
                 if k[1:] == "_score":
                     raise IllegalOperation("Sorting by `-_score` is not allowed.")
                 k = {k[1:]: {"order": "desc"}}
             s._sort.append(k)
         return s
 
-    def collapse(
-        self,
-        field: Any = None,
-        inner_hits: Any = None,
-        max_concurrent_group_searches: Any = None,
-    ) -> Any:
-        """
-        Add collapsing information to the search request.
-
-        If called without providing ``field``, it will remove all collapse
-        requirements, otherwise it will replace them with the provided
-        arguments.
-
-        The API returns a copy of the Search object and can thus be chained.
-        """
-        s = self._clone()
-        s._collapse = {}
-
-        if field is None:
-            return s
-
-        s._collapse["field"] = field
-        if inner_hits:
-            s._collapse["inner_hits"] = inner_hits
-        if max_concurrent_group_searches:
-            s._collapse["max_concurrent_group_searches"] = max_concurrent_group_searches
-        return s
-
-    def highlight_options(self, **kwargs: Any) -> Any:
+    def highlight_options(self, **kwargs):
         """
         Update the global highlighting options used for this request. For
         example::
@@ -625,7 +591,7 @@ class Search(Request):
         s._highlight_opts.update(kwargs)
         return s
 
-    def highlight(self, *fields: Any, **kwargs: Any) -> Any:
+    def highlight(self, *fields, **kwargs):
         """
         Request highlighting of some fields. All keyword arguments passed in will be
         used as parameters for all the fields in the ``fields`` parameter. Example::
@@ -665,7 +631,7 @@ class Search(Request):
             s._highlight[f] = kwargs
         return s
 
-    def suggest(self, name: Any, text: Any, **kwargs: Any) -> Any:
+    def suggest(self, name, text, **kwargs):
         """
         Add a suggestions request to the search.
 
@@ -682,7 +648,7 @@ class Search(Request):
         s._suggest[name].update(kwargs)
         return s
 
-    def to_dict(self, count: bool = False, **kwargs: Any) -> Any:
+    def to_dict(self, count=False, **kwargs):
         """
         Serialize the search into the dictionary that will be sent over as the
         request's body.
@@ -708,9 +674,6 @@ class Search(Request):
             if self._sort:
                 d["sort"] = self._sort
 
-            if self._collapse:
-                d["collapse"] = self._collapse
-
             d.update(recursive_to_dict(self._extra))
 
             if self._source not in (None, {}):
@@ -729,7 +692,7 @@ class Search(Request):
         d.update(recursive_to_dict(kwargs))
         return d
 
-    def count(self) -> Any:
+    def count(self):
         """
         Return the number of hits matching the query and filters. Note that
         only the actual number is returned.
@@ -743,7 +706,7 @@ class Search(Request):
         # TODO: failed shards detection
         return opensearch.count(index=self._index, body=d, **self._params)["count"]
 
-    def execute(self, ignore_cache: bool = False) -> Any:
+    def execute(self, ignore_cache=False):
         """
         Execute the search and return an instance of ``Response`` wrapping all
         the data.
@@ -762,7 +725,7 @@ class Search(Request):
             )
         return self._response
 
-    def scan(self) -> Any:
+    def scan(self):
         """
         Turn the search into a scan search and return a generator that will
         iterate over all the documents matching the query.
@@ -778,7 +741,7 @@ class Search(Request):
         ):
             yield self._get_result(hit)
 
-    def delete(self) -> Any:
+    def delete(self):
         """
         delete() executes the query by delegating to delete_by_query()
         """
@@ -798,22 +761,22 @@ class MultiSearch(Request):
     request.
     """
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._searches: Any = []
+    def __init__(self, **kwargs):
+        super(MultiSearch, self).__init__(**kwargs)
+        self._searches = []
 
-    def __getitem__(self, key: Any) -> Any:
+    def __getitem__(self, key):
         return self._searches[key]
 
-    def __iter__(self) -> Any:
+    def __iter__(self):
         return iter(self._searches)
 
-    def _clone(self) -> Any:
-        ms = super()._clone()
+    def _clone(self):
+        ms = super(MultiSearch, self)._clone()
         ms._searches = self._searches[:]
         return ms
 
-    def add(self, search: Any) -> Any:
+    def add(self, search):
         """
         Adds a new :class:`~opensearchpy.Search` object to the request::
 
@@ -825,7 +788,7 @@ class MultiSearch(Request):
         ms._searches.append(search)
         return ms
 
-    def to_dict(self) -> Any:
+    def to_dict(self):
         out = []
         for s in self._searches:
             meta = {}
@@ -838,7 +801,7 @@ class MultiSearch(Request):
 
         return out
 
-    def execute(self, ignore_cache: Any = False, raise_on_error: Any = True) -> Any:
+    def execute(self, ignore_cache=False, raise_on_error=True):
         """
         Execute the multi search request and return a list of search results.
         """
@@ -862,6 +825,3 @@ class MultiSearch(Request):
             self._response = out
 
         return self._response
-
-
-__all__ = ["Q"]

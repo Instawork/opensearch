@@ -25,12 +25,10 @@
 #  under the License.
 
 
-from typing import Any, Dict, Optional
-
 try:
     import simplejson as json
 except ImportError:
-    import json  # type: ignore
+    import json
 
 import uuid
 from datetime import date, datetime
@@ -45,33 +43,33 @@ FLOAT_TYPES = (Decimal,)
 TIME_TYPES = (date, datetime)
 
 
-class Serializer:
-    mimetype: str = ""
+class Serializer(object):
+    mimetype = ""
 
-    def loads(self, s: str) -> Any:
+    def loads(self, s):
         raise NotImplementedError()
 
-    def dumps(self, data: Any) -> Any:
+    def dumps(self, data):
         raise NotImplementedError()
 
 
 class TextSerializer(Serializer):
-    mimetype: str = "text/plain"
+    mimetype = "text/plain"
 
-    def loads(self, s: str) -> Any:
+    def loads(self, s):
         return s
 
-    def dumps(self, data: Any) -> Any:
+    def dumps(self, data):
         if isinstance(data, string_types):
             return data
 
-        raise SerializationError(f"Cannot serialize {data!r} into text.")
+        raise SerializationError("Cannot serialize %r into text." % data)
 
 
 class JSONSerializer(Serializer):
-    mimetype: str = "application/json"
+    mimetype = "application/json"
 
-    def default(self, data: Any) -> Any:
+    def default(self, data):
         if isinstance(data, TIME_TYPES):
             # Little hack to avoid importing pandas but to not
             # return 'NaT' string for pd.NaT as that's not a valid
@@ -111,6 +109,7 @@ class JSONSerializer(Serializer):
             elif isinstance(
                 data,
                 (
+                    np.float_,
                     np.float16,
                     np.float32,
                     np.float64,
@@ -140,15 +139,15 @@ class JSONSerializer(Serializer):
         except ImportError:
             pass
 
-        raise TypeError(f"Unable to serialize {data!r} (type: {type(data)})")
+        raise TypeError("Unable to serialize %r (type: %s)" % (data, type(data)))
 
-    def loads(self, s: str) -> Any:
+    def loads(self, s):
         try:
             return json.loads(s)
         except (ValueError, TypeError) as e:
             raise SerializationError(s, e)
 
-    def dumps(self, data: Any) -> Any:
+    def dumps(self, data):
         # don't serialize strings
         if isinstance(data, string_types):
             return data
@@ -161,27 +160,23 @@ class JSONSerializer(Serializer):
             raise SerializationError(data, e)
 
 
-DEFAULT_SERIALIZERS: Dict[str, Serializer] = {
+DEFAULT_SERIALIZERS = {
     JSONSerializer.mimetype: JSONSerializer(),
     TextSerializer.mimetype: TextSerializer(),
 }
 
 
-class Deserializer:
-    def __init__(
-        self,
-        serializers: Dict[str, Serializer],
-        default_mimetype: str = "application/json",
-    ) -> None:
+class Deserializer(object):
+    def __init__(self, serializers, default_mimetype="application/json"):
         try:
             self.default = serializers[default_mimetype]
         except KeyError:
             raise ImproperlyConfigured(
-                f"Cannot find default serializer ({default_mimetype})"
+                "Cannot find default serializer (%s)" % default_mimetype
             )
         self.serializers = serializers
 
-    def loads(self, s: str, mimetype: Optional[str] = None) -> Any:
+    def loads(self, s, mimetype=None):
         if not mimetype:
             deserializer = self.default
         else:
@@ -196,19 +191,19 @@ class Deserializer:
                 deserializer = self.serializers[mimetype]
             except KeyError:
                 raise SerializationError(
-                    f"Unknown mimetype, unable to deserialize: {mimetype}"
+                    "Unknown mimetype, unable to deserialize: %s" % mimetype
                 )
 
         return deserializer.loads(s)
 
 
 class AttrJSONSerializer(JSONSerializer):
-    def default(self, data: Any) -> Any:
+    def default(self, data):
         if isinstance(data, AttrList):
             return data._l_
         if hasattr(data, "to_dict"):
             return data.to_dict()
-        return super().default(data)
+        return super(AttrJSONSerializer, self).default(data)
 
 
 serializer = AttrJSONSerializer()

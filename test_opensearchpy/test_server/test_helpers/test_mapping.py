@@ -24,15 +24,13 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-from typing import Any
-
 from pytest import raises
 
 from opensearchpy import exceptions
 from opensearchpy.helpers import analysis, mapping
 
 
-def test_mapping_saved_into_opensearch(write_client: Any) -> None:
+def test_mapping_saved_into_opensearch(write_client):
     m = mapping.Mapping()
     m.field(
         "name", "text", analyzer=analysis.analyzer("my_analyzer", tokenizer="keyword")
@@ -52,9 +50,7 @@ def test_mapping_saved_into_opensearch(write_client: Any) -> None:
     } == write_client.indices.get_mapping(index="test-mapping")
 
 
-def test_mapping_saved_into_opensearch_when_index_already_exists_closed(
-    write_client: Any,
-) -> None:
+def test_mapping_saved_into_opensearch_when_index_already_exists_closed(write_client):
     m = mapping.Mapping()
     m.field(
         "name", "text", analyzer=analysis.analyzer("my_analyzer", tokenizer="keyword")
@@ -78,8 +74,8 @@ def test_mapping_saved_into_opensearch_when_index_already_exists_closed(
 
 
 def test_mapping_saved_into_opensearch_when_index_already_exists_with_analysis(
-    write_client: Any,
-) -> None:
+    write_client,
+):
     m = mapping.Mapping()
     analyzer = analysis.analyzer("my_analyzer", tokenizer="keyword")
     m.field("name", "text", analyzer=analyzer)
@@ -108,7 +104,7 @@ def test_mapping_saved_into_opensearch_when_index_already_exists_with_analysis(
     } == write_client.indices.get_mapping(index="test-mapping")
 
 
-def test_mapping_gets_updated_from_opensearch(write_client: Any) -> None:
+def test_mapping_gets_updated_from_opensearch(write_client):
     write_client.indices.create(
         index="test-mapping",
         body={

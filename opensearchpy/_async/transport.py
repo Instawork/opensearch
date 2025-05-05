@@ -27,11 +27,8 @@
 
 import asyncio
 import logging
+import sys
 from itertools import chain
-from typing import Any, Collection, Mapping, Optional, Type, Union
-
-from opensearchpy.connection.base import Connection
-from opensearchpy.serializer import Serializer
 
 from ..connection_pool import ConnectionPool
 from ..exceptions import (
@@ -58,28 +55,25 @@ class AsyncTransport(Transport):
 
     DEFAULT_CONNECTION_CLASS = AIOHttpConnection
 
-    sniffing_task: Any = None
-
     def __init__(
         self,
-        hosts: Any,
-        connection_class: Any = None,
-        connection_pool_class: Type[ConnectionPool] = ConnectionPool,
-        host_info_callback: Any = get_host_info,
-        sniff_on_start: bool = False,
-        sniffer_timeout: Any = None,
-        sniff_timeout: float = 0.1,
-        sniff_on_connection_fail: bool = False,
-        serializer: Serializer = JSONSerializer(),
-        serializers: Any = None,
-        default_mimetype: str = "application/json",
-        max_retries: int = 3,
-        pool_maxsize: Optional[int] = None,
-        retry_on_status: Any = (502, 503, 504),
-        retry_on_timeout: bool = False,
-        send_get_body_as: str = "GET",
-        **kwargs: Any
-    ) -> None:
+        hosts,
+        connection_class=None,
+        connection_pool_class=ConnectionPool,
+        host_info_callback=get_host_info,
+        sniff_on_start=False,
+        sniffer_timeout=None,
+        sniff_timeout=0.1,
+        sniff_on_connection_fail=False,
+        serializer=JSONSerializer(),
+        serializers=None,
+        default_mimetype="application/json",
+        max_retries=3,
+        retry_on_status=(502, 503, 504),
+        retry_on_timeout=False,
+        send_get_body_as="GET",
+        **kwargs
+    ):
         """
         :arg hosts: list of dictionaries, each containing keyword arguments to
             create a `connection_class` instance
@@ -103,8 +97,6 @@ class AsyncTransport(Transport):
         :arg default_mimetype: when no mimetype is specified by the server
             response assume this mimetype, defaults to `'application/json'`
         :arg max_retries: maximum number of retries before an exception is propagated
-        :arg pool_maxsize: Maximum connection pool size used by pool-manager
-            For custom connection-pooling on current session
         :arg retry_on_status: set of HTTP status codes on which we should retry
             on a different node. defaults to ``(502, 503, 504)``
         :arg retry_on_timeout: should timeout trigger a retry on different
@@ -120,11 +112,11 @@ class AsyncTransport(Transport):
         options provided as part of the hosts parameter.
         """
         self.sniffing_task = None
-        self.loop: Any = None
+        self.loop = None
         self._async_init_called = False
-        self._sniff_on_start_event: Optional[asyncio.Event] = None
+        self._sniff_on_start_event = None  # type: asyncio.Event
 
-        super().__init__(
+        super(AsyncTransport, self).__init__(
             hosts=[],
             connection_class=connection_class,
             connection_pool_class=connection_pool_class,
@@ -137,7 +129,6 @@ class AsyncTransport(Transport):
             serializers=serializers,
             default_mimetype=default_mimetype,
             max_retries=max_retries,
-            pool_maxsize=pool_maxsize,
             retry_on_status=retry_on_status,
             retry_on_timeout=retry_on_timeout,
             send_get_body_as=send_get_body_as,
@@ -150,7 +141,7 @@ class AsyncTransport(Transport):
         self.hosts = hosts
         self.sniff_on_start = sniff_on_start
 
-    async def _async_init(self) -> None:
+    async def _async_init(self):
         """This is our stand-in for an async constructor. Everything
         that was deferred within __init__() should be done here now.
 
@@ -179,7 +170,7 @@ class AsyncTransport(Transport):
 
                 # Since this is the first one we wait for it to complete
                 # in case there's an error it'll get raised here.
-                await self.sniffing_task  # type: ignore
+                await self.sniffing_task
 
             # If the task gets cancelled here it likely means the
             # transport got closed.
@@ -192,7 +183,7 @@ class AsyncTransport(Transport):
             finally:
                 self._sniff_on_start_event.set()
 
-    async def _async_call(self) -> None:
+    async def _async_call(self):
         """This method is called within any async method of AsyncTransport
         where the transport is not closing. This will check to see if we should
         call our _async_init() or create a new sniffing task
@@ -213,7 +204,7 @@ class AsyncTransport(Transport):
             if self.loop.time() >= self.last_sniff + self.sniffer_timeout:
                 self.create_sniff_task()
 
-    async def _get_node_info(self, conn: Any, initial: Any) -> Any:
+    async def _get_node_info(self, conn, initial):
         try:
             # use small timeout for the sniffing request, should be a fast api call
             _, headers, node_info = await conn.perform_request(
@@ -226,7 +217,7 @@ class AsyncTransport(Transport):
             pass
         return None
 
-    async def _get_sniff_data(self, initial: Any = False) -> Any:
+    async def _get_sniff_data(self, initial=False):
         previous_sniff = self.last_sniff
 
         # reset last_sniff timestamp
@@ -235,7 +226,7 @@ class AsyncTransport(Transport):
         # use small timeout for the sniffing request, should be a fast api call
         timeout = self.sniff_timeout if not initial else None
 
-        def _sniff_request(conn: Any) -> Any:
+        def _sniff_request(conn):
             return self.loop.create_task(
                 conn.perform_request("GET", "/_nodes/_all/http", timeout=timeout)
             )
@@ -251,13 +242,16 @@ class AsyncTransport(Transport):
                 continue
             tasks.append(_sniff_request(conn))
 
-        done: Any = ()
+        done = ()
         try:
             while tasks:
+                # The 'loop' keyword is deprecated in 3.8+ so don't
+                # pass it to asyncio.wait() unless we're on <=3.7
+                wait_kwargs = {"loop": self.loop} if sys.version_info < (3, 8) else {}
 
                 # execute sniff requests in parallel, wait for first to return
                 done, tasks = await asyncio.wait(
-                    tasks, return_when=asyncio.FIRST_COMPLETED
+                    tasks, return_when=asyncio.FIRST_COMPLETED, **wait_kwargs
                 )
                 # go through all the finished tasks
                 for t in done:
@@ -288,7 +282,7 @@ class AsyncTransport(Transport):
             for task in chain(done, tasks):
                 task.cancel()
 
-    async def sniff_hosts(self, initial: bool = False) -> Any:
+    async def sniff_hosts(self, initial=False):
         """Either spawns a sniffing_task which does regular sniffing
         over time or does a single sniffing session and awaits the results.
         """
@@ -299,7 +293,7 @@ class AsyncTransport(Transport):
             return
 
         node_info = await self._get_sniff_data(initial)
-        hosts: Any = list(filter(None, (self._get_host_info(n) for n in node_info)))
+        hosts = list(filter(None, (self._get_host_info(n) for n in node_info)))
 
         # we weren't able to get any nodes, maybe using an incompatible
         # transport_schema or host_info_callback blocked all - raise error.
@@ -316,7 +310,7 @@ class AsyncTransport(Transport):
             if c not in self.connection_pool.connections:
                 await c.close()
 
-    def create_sniff_task(self, initial: bool = False) -> None:
+    def create_sniff_task(self, initial=False):
         """
         Initiate a sniffing task. Make sure we only have one sniff request
         running at any given time. If a finished sniffing request is around,
@@ -332,7 +326,7 @@ class AsyncTransport(Transport):
         if self.sniffing_task is None:
             self.sniffing_task = self.loop.create_task(self.sniff_hosts(initial))
 
-    def mark_dead(self, connection: Connection) -> None:
+    def mark_dead(self, connection):
         """
         Mark a connection as dead (failed) in the connection pool. If sniffing
         on failure is enabled this will initiate the sniffing process.
@@ -343,29 +337,20 @@ class AsyncTransport(Transport):
         if self.sniff_on_connection_fail:
             self.create_sniff_task()
 
-    def get_connection(self) -> Any:
+    def get_connection(self):
         return self.connection_pool.get_connection()
 
-    async def perform_request(
-        self,
-        method: str,
-        url: str,
-        params: Optional[Mapping[str, Any]] = None,
-        body: Optional[bytes] = None,
-        timeout: Optional[Union[int, float]] = None,
-        ignore: Collection[int] = (),
-        headers: Optional[Mapping[str, str]] = None,
-    ) -> Any:
+    async def perform_request(self, method, url, headers=None, params=None, body=None):
         """
         Perform the actual request. Retrieve a connection from the connection
-        pool, pass all the information to its perform_request method and
+        pool, pass all the information to it's perform_request method and
         return the data.
 
         If an exception was raised, mark the connection as failed and retry (up
         to `max_retries` times).
 
         If the operation was successful and the connection used was previously
-        marked as dead, mark it as live, resetting its failure count.
+        marked as dead, mark it as live, resetting it's failure count.
 
         :arg method: HTTP method to use
         :arg url: absolute url (without host) to target
@@ -375,13 +360,11 @@ class AsyncTransport(Transport):
             underlying :class:`~opensearchpy.Connection` class for serialization
         :arg body: body of the request, will be serialized using serializer and
             passed to the connection
-        :arg timeout: timeout of the request. If it is not presented as argument
-            will be extracted from `params`
         """
         await self._async_call()
 
         method, params, body, ignore, timeout = self._resolve_request_args(
-            method, params, body, ignore, timeout
+            method, params, body
         )
 
         for attempt in range(self.max_retries + 1):
@@ -429,7 +412,7 @@ class AsyncTransport(Transport):
                     raise e
 
             else:
-                # connection didn't fail, confirm its live status
+                # connection didn't fail, confirm it's live status
                 self.connection_pool.mark_live(connection)
 
                 if method == "HEAD":
@@ -441,7 +424,7 @@ class AsyncTransport(Transport):
                     )
                 return data
 
-    async def close(self) -> None:
+    async def close(self):
         """
         Explicitly closes connections
         """
@@ -455,6 +438,3 @@ class AsyncTransport(Transport):
 
         for connection in self.connection_pool.connections:
             await connection.close()
-
-
-__all__ = ["TransportError"]

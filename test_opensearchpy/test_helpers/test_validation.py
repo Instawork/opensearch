@@ -25,7 +25,6 @@
 #  under the License.
 
 from datetime import datetime
-from typing import Any
 
 from pytest import raises
 
@@ -43,10 +42,10 @@ from opensearchpy.exceptions import ValidationException
 
 
 class Author(InnerDoc):
-    name: Any = Text(required=True)
-    email: Any = Text(required=True)
+    name = Text(required=True)
+    email = Text(required=True)
 
-    def clean(self) -> None:
+    def clean(self):
         print(self, type(self), self.name)
         if self.name.lower() not in self.email:
             raise ValidationException("Invalid email!")
@@ -63,10 +62,10 @@ class BlogPostWithStatus(Document):
 
 
 class AutoNowDate(Date):
-    def clean(self, data: Any) -> Any:
+    def clean(self, data):
         if data is None:
             data = datetime.now()
-        return super().clean(data)
+        return super(AutoNowDate, self).clean(data)
 
 
 class Log(Document):
@@ -74,15 +73,15 @@ class Log(Document):
     data = Text()
 
 
-def test_required_int_can_be_0() -> None:
+def test_required_int_can_be_0():
     class DT(Document):
         i = Integer(required=True)
 
-    dt: Any = DT(i=0)
+    dt = DT(i=0)
     assert dt.full_clean() is None
 
 
-def test_required_field_cannot_be_empty_list() -> None:
+def test_required_field_cannot_be_empty_list():
     class DT(Document):
         i = Integer(required=True)
 
@@ -91,49 +90,49 @@ def test_required_field_cannot_be_empty_list() -> None:
         dt.full_clean()
 
 
-def test_validation_works_for_lists_of_values() -> None:
+def test_validation_works_for_lists_of_values():
     class DT(Document):
         i = Date(required=True)
 
-    dt1: Any = DT(i=[datetime.now(), "not date"])
+    dt = DT(i=[datetime.now(), "not date"])
     with raises(ValidationException):
-        dt1.full_clean()
+        dt.full_clean()
 
-    dt2: Any = DT(i=[datetime.now(), datetime.now()])
-    assert None is dt2.full_clean()
+    dt = DT(i=[datetime.now(), datetime.now()])
+    assert None is dt.full_clean()
 
 
-def test_field_with_custom_clean() -> None:
+def test_field_with_custom_clean():
     ls = Log()
     ls.full_clean()
 
     assert isinstance(ls.timestamp, datetime)
 
 
-def test_empty_object() -> None:
-    d: Any = BlogPost(authors=[{"name": "Guian", "email": "guiang@bitquilltech.com"}])
+def test_empty_object():
+    d = BlogPost(authors=[{"name": "Guian", "email": "guiang@bitquilltech.com"}])
     d.inner = {}
 
     d.full_clean()
 
 
-def test_missing_required_field_raises_validation_exception() -> None:
-    d1: Any = BlogPost()
+def test_missing_required_field_raises_validation_exception():
+    d = BlogPost()
     with raises(ValidationException):
-        d1.full_clean()
+        d.full_clean()
 
-    d2: Any = BlogPost()
-    d2.authors.append({"name": "Guian"})
+    d = BlogPost()
+    d.authors.append({"name": "Guian"})
     with raises(ValidationException):
-        d2.full_clean()
+        d.full_clean()
 
-    d3: Any = BlogPost()
-    d3.authors.append({"name": "Guian", "email": "guiang@bitquilltech.com"})
-    d3.full_clean()
+    d = BlogPost()
+    d.authors.append({"name": "Guian", "email": "guiang@bitquilltech.com"})
+    d.full_clean()
 
 
-def test_boolean_doesnt_treat_false_as_empty() -> None:
-    d: Any = BlogPostWithStatus()
+def test_boolean_doesnt_treat_false_as_empty():
+    d = BlogPostWithStatus()
     with raises(ValidationException):
         d.full_clean()
     d.published = False
@@ -142,10 +141,8 @@ def test_boolean_doesnt_treat_false_as_empty() -> None:
     d.full_clean()
 
 
-def test_custom_validation_on_nested_gets_run() -> None:
-    d: Any = BlogPost(
-        authors=[Author(name="Guian", email="king@example.com")], created=None
-    )
+def test_custom_validation_on_nested_gets_run():
+    d = BlogPost(authors=[Author(name="Guian", email="king@example.com")], created=None)
 
     assert isinstance(d.authors[0], Author)
 
@@ -153,8 +150,8 @@ def test_custom_validation_on_nested_gets_run() -> None:
         d.full_clean()
 
 
-def test_accessing_known_fields_returns_empty_value() -> None:
-    d: Any = BlogPost()
+def test_accessing_known_fields_returns_empty_value():
+    d = BlogPost()
 
     assert [] == d.authors
 
@@ -163,8 +160,8 @@ def test_accessing_known_fields_returns_empty_value() -> None:
     assert None is d.authors[0].email
 
 
-def test_empty_values_are_not_serialized() -> None:
-    d: Any = BlogPost(
+def test_empty_values_are_not_serialized():
+    d = BlogPost(
         authors=[{"name": "Guian", "email": "guiang@bitquilltech.com"}], created=None
     )
 

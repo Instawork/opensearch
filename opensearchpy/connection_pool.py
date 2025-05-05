@@ -29,16 +29,18 @@ import logging
 import random
 import threading
 import time
-from queue import Empty, PriorityQueue
-from typing import Any, Dict, Optional, Sequence, Tuple, Type
 
-from .connection import Connection
+try:
+    from Queue import Empty, PriorityQueue
+except ImportError:
+    from queue import PriorityQueue, Empty
+
 from .exceptions import ImproperlyConfigured
 
-logger: logging.Logger = logging.getLogger("opensearch")
+logger = logging.getLogger("opensearch")
 
 
-class ConnectionSelector:
+class ConnectionSelector(object):
     """
     Simple class used to select a connection from a list of currently live
     connection instances. In init time it is passed a dictionary containing all
@@ -53,17 +55,17 @@ class ConnectionSelector:
     process it will be the dictionary returned by the `host_info_callback`.
 
     Example of where this would be useful is a zone-aware selector that would
-    only select connections from its own zones and only fall back to other
-    connections where there would be none in its zones.
+    only select connections from it's own zones and only fall back to other
+    connections where there would be none in it's zones.
     """
 
-    def __init__(self, opts: Sequence[Tuple[Connection, Any]]) -> None:
+    def __init__(self, opts):
         """
         :arg opts: dictionary of connection instances and their options
         """
         self.connection_opts = opts
 
-    def select(self, connections: Sequence[Connection]) -> None:
+    def select(self, connections):
         """
         Select a connection from the given list.
 
@@ -77,7 +79,7 @@ class RandomSelector(ConnectionSelector):
     Select a connection at random
     """
 
-    def select(self, connections: Sequence[Connection]) -> Any:
+    def select(self, connections):
         return random.choice(connections)
 
 
@@ -86,17 +88,17 @@ class RoundRobinSelector(ConnectionSelector):
     Selector using round-robin.
     """
 
-    def __init__(self, opts: Sequence[Tuple[Connection, Any]]) -> None:
-        super().__init__(opts)
+    def __init__(self, opts):
+        super(RoundRobinSelector, self).__init__(opts)
         self.data = threading.local()
 
-    def select(self, connections: Sequence[Connection]) -> Any:
+    def select(self, connections):
         self.data.rr = getattr(self.data, "rr", -1) + 1
         self.data.rr %= len(connections)
         return connections[self.data.rr]
 
 
-class ConnectionPool:
+class ConnectionPool(object):
     """
     Container holding the :class:`~opensearchpy.Connection` instances,
     managing the selection process (via a
@@ -110,7 +112,7 @@ class ConnectionPool:
     future reference.
 
     Upon each request the `Transport` will ask for a `Connection` via the
-    `get_connection` method. If the connection fails (its `perform_request`
+    `get_connection` method. If the connection fails (it's `perform_request`
     raises a `ConnectionError`) it will be marked as dead (via `mark_dead`) and
     put on a timeout (if it fails N times in a row the timeout is exponentially
     longer - the formula is `default_timeout * 2 ** (fail_count - 1)`). When
@@ -119,27 +121,18 @@ class ConnectionPool:
     succeeds will be marked as live (its fail count will be deleted).
     """
 
-    connections_opts: Sequence[Tuple[Connection, Any]]
-    connections: Any
-    orig_connections: Tuple[Connection, ...]
-    dead: Any
-    dead_count: Dict[Any, int]
-    dead_timeout: float
-    timeout_cutoff: int
-    selector: Any
-
     def __init__(
         self,
-        connections: Any,
-        dead_timeout: float = 60,
-        timeout_cutoff: int = 5,
-        selector_class: Type[ConnectionSelector] = RoundRobinSelector,
-        randomize_hosts: bool = True,
-        **kwargs: Any,
-    ) -> None:
+        connections,
+        dead_timeout=60,
+        timeout_cutoff=5,
+        selector_class=RoundRobinSelector,
+        randomize_hosts=True,
+        **kwargs
+    ):
         """
         :arg connections: list of tuples containing the
-            :class:`~opensearchpy.Connection` instance and its options
+            :class:`~opensearchpy.Connection` instance and it's options
         :arg dead_timeout: number of seconds a connection should be retired for
             after a failure, increases on consecutive failures
         :arg timeout_cutoff: number of consecutive failures after which the
@@ -170,9 +163,9 @@ class ConnectionPool:
         self.dead_timeout = dead_timeout
         self.timeout_cutoff = timeout_cutoff
 
-        self.selector = selector_class(dict(connections))  # type: ignore
+        self.selector = selector_class(dict(connections))
 
-    def mark_dead(self, connection: Any, now: Optional[float] = None) -> None:
+    def mark_dead(self, connection, now=None):
         """
         Mark the connection as dead (failed). Remove it from the live pool and
         put it on a timeout.
@@ -202,7 +195,7 @@ class ConnectionPool:
                 timeout,
             )
 
-    def mark_live(self, connection: Any) -> None:
+    def mark_live(self, connection):
         """
         Mark connection as healthy after a resurrection. Resets the fail
         counter for the connection.
@@ -215,10 +208,10 @@ class ConnectionPool:
             # race condition, safe to ignore
             pass
 
-    def resurrect(self, force: bool = False) -> Any:
+    def resurrect(self, force=False):
         """
         Attempt to resurrect a connection from the dead pool. It will try to
-        locate one (not all) eligible (its timeout is over) connection to
+        locate one (not all) eligible (it's timeout is over) connection to
         return to the live pool. Any resurrected connection is also returned.
 
         :arg force: resurrect a connection even if there is none eligible (used
@@ -252,12 +245,12 @@ class ConnectionPool:
             self.dead.put((timeout, connection))
             return
 
-        # either we were forced or the connection is eligible to be retried
+        # either we were forced or the connection is elligible to be retried
         self.connections.append(connection)
         logger.info("Resurrecting connection %r (force=%s).", connection, force)
         return connection
 
-    def get_connection(self) -> Any:
+    def get_connection(self):
         """
         Return a connection from the pool using the `ConnectionSelector`
         instance.
@@ -266,7 +259,7 @@ class ConnectionPool:
         no connections are available and passes the list of live connections to
         the selector instance to choose from.
 
-        Returns a connection instance and its current fail count.
+        Returns a connection instance and it's current fail count.
         """
         self.resurrect()
         connections = self.connections[:]
@@ -282,38 +275,38 @@ class ConnectionPool:
         # only one connection, no need for a selector
         return connections[0]
 
-    def close(self) -> Any:
+    def close(self):
         """
         Explicitly closes connections
         """
         for conn in self.connections:
             conn.close()
 
-    def __repr__(self) -> str:
-        return f"<{type(self).__name__}: {self.connections!r}>"
+    def __repr__(self):
+        return "<%s: %r>" % (type(self).__name__, self.connections)
 
 
 class DummyConnectionPool(ConnectionPool):
-    def __init__(self, connections: Any, **kwargs: Any) -> None:
+    def __init__(self, connections, **kwargs):
         if len(connections) != 1:
             raise ImproperlyConfigured(
                 "DummyConnectionPool needs exactly one " "connection defined."
             )
         # we need connection opts for sniffing logic
         self.connection_opts = connections
-        self.connection: Any = connections[0][0]
+        self.connection = connections[0][0]
         self.connections = (self.connection,)
 
-    def get_connection(self) -> Any:
+    def get_connection(self):
         return self.connection
 
-    def close(self) -> None:
+    def close(self):
         """
         Explicitly closes connections
         """
         self.connection.close()
 
-    def _noop(self, *args: Any, **kwargs: Any) -> Any:
+    def _noop(self, *args, **kwargs):
         pass
 
     mark_dead = mark_live = resurrect = _noop
@@ -322,14 +315,14 @@ class DummyConnectionPool(ConnectionPool):
 class EmptyConnectionPool(ConnectionPool):
     """A connection pool that is empty. Errors out if used."""
 
-    def __init__(self, *_: Any, **__: Any) -> None:
+    def __init__(self, *_, **__):
         self.connections = []
         self.connection_opts = []
 
-    def get_connection(self) -> Connection:
+    def get_connection(self):
         raise ImproperlyConfigured("No connections were configured")
 
-    def _noop(self, *args: Any, **kwargs: Any) -> Any:
+    def _noop(self, *args, **kwargs):
         pass
 
     close = mark_dead = mark_live = resurrect = _noop

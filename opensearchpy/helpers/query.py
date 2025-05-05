@@ -24,19 +24,21 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-import collections.abc as collections_abc
+try:
+    import collections.abc as collections_abc  # only works on python 3.3+
+except ImportError:
+    import collections as collections_abc
+
 from itertools import chain
-from typing import Any, Optional
 
 # 'SF' looks unused but the test suite assumes it's available
 # from this module so others are liable to do so as well.
-from ..helpers.function import SF, ScoreFunction
+from ..helpers.function import SF  # noqa: F401
+from ..helpers.function import ScoreFunction
 from .utils import DslBase
 
 
-def Q(  # pylint: disable=invalid-name
-    name_or_query: Any = "match_all", **params: Any
-) -> Any:
+def Q(name_or_query="match_all", **params):
     # {"match": {"title": "python"}}
     if isinstance(name_or_query, collections_abc.Mapping):
         if params:
@@ -46,7 +48,7 @@ def Q(  # pylint: disable=invalid-name
                 'Q() can only accept dict with a single query ({"match": {...}}). '
                 "Instead it got (%r)" % name_or_query
             )
-        name, params = name_or_query.copy().popitem()  # type: ignore
+        name, params = name_or_query.copy().popitem()
         return Query.get_dsl_class(name)(_expand__to_dot=False, **params)
 
     # MatchAll()
@@ -66,28 +68,28 @@ def Q(  # pylint: disable=invalid-name
 
 
 class Query(DslBase):
-    _type_name: str = "query"
+    _type_name = "query"
     _type_shortcut = staticmethod(Q)
-    name: Optional[str] = None
+    name = None
 
-    def __add__(self, other: Any) -> Any:
+    def __add__(self, other):
         # make sure we give queries that know how to combine themselves
         # preference
         if hasattr(other, "__radd__"):
             return other.__radd__(self)
         return Bool(must=[self, other])
 
-    def __invert__(self) -> Any:
+    def __invert__(self):
         return Bool(must_not=[self])
 
-    def __or__(self, other: Any) -> Any:
+    def __or__(self, other):
         # make sure we give queries that know how to combine themselves
         # preference
         if hasattr(other, "__ror__"):
             return other.__ror__(self)
         return Bool(should=[self, other])
 
-    def __and__(self, other: Any) -> Any:
+    def __and__(self, other):
         # make sure we give queries that know how to combine themselves
         # preference
         if hasattr(other, "__rand__"):
@@ -98,17 +100,17 @@ class Query(DslBase):
 class MatchAll(Query):
     name = "match_all"
 
-    def __add__(self, other: Any) -> Any:
+    def __add__(self, other):
         return other._clone()
 
     __and__ = __rand__ = __radd__ = __add__
 
-    def __or__(self, other: Any) -> "MatchAll":
+    def __or__(self, other):
         return self
 
     __ror__ = __or__
 
-    def __invert__(self) -> Any:
+    def __invert__(self):
         return MatchNone()
 
 
@@ -118,17 +120,17 @@ EMPTY_QUERY = MatchAll()
 class MatchNone(Query):
     name = "match_none"
 
-    def __add__(self, other: Any) -> "MatchNone":
+    def __add__(self, other):
         return self
 
     __and__ = __rand__ = __radd__ = __add__
 
-    def __or__(self, other: Any) -> Any:
+    def __or__(self, other):
         return other._clone()
 
     __ror__ = __or__
 
-    def __invert__(self) -> Any:
+    def __invert__(self):
         return MatchAll()
 
 
@@ -141,7 +143,7 @@ class Bool(Query):
         "filter": {"type": "query", "multi": True},
     }
 
-    def __add__(self, other: "Bool") -> Any:
+    def __add__(self, other):
         q = self._clone()
         if isinstance(other, Bool):
             q.must += other.must
@@ -154,7 +156,7 @@ class Bool(Query):
 
     __radd__ = __add__
 
-    def __or__(self, other: "Bool") -> Any:
+    def __or__(self, other):
         for q in (self, other):
             if isinstance(q, Bool) and not any(
                 (q.must, q.must_not, q.filter, getattr(q, "minimum_should_match", None))
@@ -179,14 +181,14 @@ class Bool(Query):
     __ror__ = __or__
 
     @property
-    def _min_should_match(self) -> Any:
+    def _min_should_match(self):
         return getattr(
             self,
             "minimum_should_match",
             0 if not self.should or (self.must or self.filter) else 1,
         )
 
-    def __invert__(self) -> Any:
+    def __invert__(self):
         # Because an empty Bool query is treated like
         # MatchAll the inverse should be MatchNone
         if not any(chain(self.must, self.filter, self.should, self.must_not)):
@@ -206,7 +208,7 @@ class Bool(Query):
             return negations[0]
         return Bool(should=negations)
 
-    def __and__(self, other: "Bool") -> Any:
+    def __and__(self, other):
         q = self._clone()
         if isinstance(other, Bool):
             q.must += other.must
@@ -219,12 +221,10 @@ class Bool(Query):
                 del q._params["minimum_should_match"]
 
             for qx in (self, other):
+                # TODO: percentages will fail here
                 min_should_match = qx._min_should_match
                 # all subqueries are required
-                if (
-                    isinstance(min_should_match, int)
-                    and len(qx.should) <= min_should_match
-                ):
+                if len(qx.should) <= min_should_match:
                     q.must.extend(qx.should)
                 # not all of them are required, use it and remember min_should_match
                 elif not q.should:
@@ -255,7 +255,7 @@ class FunctionScore(Query):
         "functions": {"type": "score_function", "multi": True},
     }
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         if "functions" in kwargs:
             pass
         else:
@@ -263,7 +263,7 @@ class FunctionScore(Query):
             for name in ScoreFunction._classes:
                 if name in kwargs:
                     fns.append({name: kwargs.pop(name)})
-        super().__init__(**kwargs)
+        super(FunctionScore, self).__init__(**kwargs)
 
 
 # compound queries
@@ -523,6 +523,3 @@ class ParentId(Query):
 
 class Wrapper(Query):
     name = "wrapper"
-
-
-__all__ = ["SF"]

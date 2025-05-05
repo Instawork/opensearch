@@ -24,19 +24,21 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-import collections.abc as collections_abc
-from typing import Any, Optional
+try:
+    import collections.abc as collections_abc  # only works on python 3.3+
+except ImportError:
+    import collections as collections_abc
 
 from .utils import DslBase
 
 
-def SF(name_or_sf: Any, **params: Any) -> Any:  # pylint: disable=invalid-name
+def SF(name_or_sf, **params):
     # {"script_score": {"script": "_score"}, "filter": {}}
     if isinstance(name_or_sf, collections_abc.Mapping):
         if params:
             raise ValueError("SF() cannot accept parameters when passing in a dict.")
         kwargs = {}
-        sf = name_or_sf.copy()  # type: ignore
+        sf = name_or_sf.copy()
         for k in ScoreFunction._param_defs:
             if k in name_or_sf:
                 kwargs[k] = sf.pop(k)
@@ -48,7 +50,7 @@ def SF(name_or_sf: Any, **params: Any) -> Any:  # pylint: disable=invalid-name
         elif len(sf) == 1:
             name, params = sf.popitem()
         else:
-            raise ValueError(f"SF() got an unexpected fields in the dictionary: {sf!r}")
+            raise ValueError("SF() got an unexpected fields in the dictionary: %r" % sf)
 
         # boost factor special case, see https://github.com/elastic/elasticsearch/issues/6343
         if not isinstance(params, collections_abc.Mapping):
@@ -71,17 +73,17 @@ def SF(name_or_sf: Any, **params: Any) -> Any:  # pylint: disable=invalid-name
 
 
 class ScoreFunction(DslBase):
-    _type_name: str = "score_function"
+    _type_name = "score_function"
     _type_shortcut = staticmethod(SF)
     _param_defs = {
         "query": {"type": "query"},
         "filter": {"type": "query"},
         "weight": {},
     }
-    name: Optional[str] = None
+    name = None
 
-    def to_dict(self) -> Any:
-        d = super().to_dict()
+    def to_dict(self):
+        d = super(ScoreFunction, self).to_dict()
         # filter and query dicts should be at the same level as us
         for k in self._param_defs:
             if k in d[self.name]:
@@ -96,8 +98,8 @@ class ScriptScore(ScoreFunction):
 class BoostFactor(ScoreFunction):
     name = "boost_factor"
 
-    def to_dict(self) -> Any:
-        d = super().to_dict()
+    def to_dict(self):
+        d = super(BoostFactor, self).to_dict()
         if "value" in d[self.name]:
             d[self.name] = d[self.name].pop("value")
         else:

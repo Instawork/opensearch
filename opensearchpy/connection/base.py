@@ -24,6 +24,7 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
+
 import gzip
 import io
 import logging
@@ -31,32 +32,31 @@ import os
 import re
 import warnings
 from platform import python_version
-from typing import Any, Collection, Dict, Mapping, Optional, Union
 
 try:
     import simplejson as json
 except ImportError:
-    import json  # type: ignore
+    import json
 
-from .._version import __versionstr__
+from .. import __versionstr__
 from ..exceptions import HTTP_EXCEPTIONS, OpenSearchWarning, TransportError
 
 logger = logging.getLogger("opensearch")
 
 # create the opensearchpy.trace logger, but only set propagate to False if the
 # logger hasn't already been configured
-TRACER_ALREADY_CONFIGURED = "opensearchpy.trace" in logging.Logger.manager.loggerDict
+_tracer_already_configured = "opensearchpy.trace" in logging.Logger.manager.loggerDict
 tracer = logging.getLogger("opensearchpy.trace")
-if not TRACER_ALREADY_CONFIGURED:
+if not _tracer_already_configured:
     tracer.propagate = False
 
 _WARNING_RE = re.compile(r"\"([^\"]*)\"")
 
 
-class Connection:
+class Connection(object):
     """
     Class responsible for maintaining a connection to an OpenSearch node. It
-    holds persistent connection pool to it and its main interface
+    holds persistent connection pool to it and it's main interface
     (`perform_request`) is thread-safe.
 
     Also responsible for logging.
@@ -73,16 +73,16 @@ class Connection:
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: Optional[int] = None,
-        use_ssl: bool = False,
-        url_prefix: str = "",
-        timeout: int = 10,
-        headers: Optional[Dict[str, str]] = None,
-        http_compress: Optional[bool] = None,
-        opaque_id: Optional[str] = None,
-        **kwargs: Any,
-    ) -> None:
+        host="localhost",
+        port=None,
+        use_ssl=False,
+        url_prefix="",
+        timeout=10,
+        headers=None,
+        http_compress=None,
+        opaque_id=None,
+        **kwargs
+    ):
         if port is None:
             port = 9200
 
@@ -119,39 +119,34 @@ class Connection:
         self.hostname = host
         self.port = port
         if ":" in host:  # IPv6
-            self.host = f"{scheme}://[{host}]"
+            self.host = "%s://[%s]" % (scheme, host)
         else:
-            self.host = f"{scheme}://{host}"
+            self.host = "%s://%s" % (scheme, host)
         if self.port is not None:
-            self.host += f":{self.port}"
+            self.host += ":%s" % self.port
         if url_prefix:
             url_prefix = "/" + url_prefix.strip("/")
         self.url_prefix = url_prefix
         self.timeout = timeout
 
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}: {self.host}>"
+    def __repr__(self):
+        return "<%s: %s>" % (self.__class__.__name__, self.host)
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other):
         if not isinstance(other, Connection):
-            raise TypeError(f"Unsupported equality check for {self} and {other}")
+            raise TypeError("Unsupported equality check for %s and %s" % (self, other))
         return self.__hash__() == other.__hash__()
 
-    def __lt__(self, other: object) -> bool:
-        if not isinstance(other, Connection):
-            raise TypeError(f"Unsupported lt check for {self} and {other}")
-        return self.__hash__() < other.__hash__()
-
-    def __hash__(self) -> int:
+    def __hash__(self):
         return id(self)
 
-    def _gzip_compress(self, body: Any) -> bytes:
+    def _gzip_compress(self, body):
         buf = io.BytesIO()
         with gzip.GzipFile(fileobj=buf, mode="wb") as f:
             f.write(body)
         return buf.getvalue()
 
-    def _raise_warnings(self, warning_headers: Any) -> None:
+    def _raise_warnings(self, warning_headers):
         """If 'headers' contains a 'Warning' header raise
         the warnings to be seen by the user. Takes an iterable
         of string values from any number of 'Warning' headers.
@@ -163,7 +158,7 @@ class Connection:
         # Format is: '(number) OpenSearch-(version)-(instance) "(message)"'
         warning_messages = []
         for header in warning_headers:
-            # Because 'Requests' does its own folding of multiple HTTP headers
+            # Because 'Requests' does it's own folding of multiple HTTP headers
             # into one header delimited by commas (totally standard compliant, just
             # annoying for cases like this) we need to expect there may be
             # more than one message per 'Warning' header.
@@ -178,7 +173,7 @@ class Connection:
         for message in warning_messages:
             warnings.warn(message, category=OpenSearchWarning)
 
-    def _pretty_json(self, data: Union[str, bytes]) -> str:
+    def _pretty_json(self, data):
         # pretty JSON in tracer curl logs
         try:
             return json.dumps(
@@ -186,27 +181,9 @@ class Connection:
             ).replace("'", r"\u0027")
         except (ValueError, TypeError):
             # non-json data or a bulk request
-            return data  # type: ignore
+            return data
 
-    def _log_request_response(
-        self, body: Optional[Union[str, bytes]], response: Optional[str]
-    ) -> None:
-        if logger.isEnabledFor(logging.DEBUG):
-            if body and isinstance(body, bytes):
-                body = body.decode("utf-8", "ignore")
-            logger.debug("> %s", body)
-            if response is not None:
-                logger.debug("< %s", response)
-
-    def _log_trace(
-        self,
-        method: str,
-        path: str,
-        body: Optional[Union[str, bytes]],
-        status_code: Optional[int],
-        response: Optional[str],
-        duration: Optional[float],
-    ) -> None:
+    def _log_trace(self, method, path, body, status_code, response, duration):
         if not tracer.isEnabledFor(logging.INFO) or not tracer.handlers:
             return
 
@@ -232,47 +209,49 @@ class Connection:
 
     def perform_request(
         self,
-        method: str,
-        url: str,
-        params: Optional[Mapping[str, Any]] = None,
-        body: Optional[bytes] = None,
-        timeout: Optional[Union[int, float]] = None,
-        ignore: Collection[int] = (),
-        headers: Optional[Mapping[str, str]] = None,
-    ) -> Any:
+        method,
+        url,
+        params=None,
+        body=None,
+        timeout=None,
+        ignore=(),
+        headers=None,
+    ):
         raise NotImplementedError()
 
     def log_request_success(
-        self,
-        method: str,
-        full_url: str,
-        path: str,
-        body: Any,
-        status_code: int,
-        response: str,
-        duration: float,
-    ) -> None:
+        self, method, full_url, path, body, status_code, response, duration
+    ):
         """Log a successful API call."""
         #  TODO: optionally pass in params instead of full_url and do urlencode only when needed
+
+        # body has already been serialized to utf-8, deserialize it for logging
+        # TODO: find a better way to avoid (de)encoding the body back and forth
+        if body:
+            try:
+                body = body.decode("utf-8", "ignore")
+            except AttributeError:
+                pass
 
         logger.info(
             "%s %s [status:%s request:%.3fs]", method, full_url, status_code, duration
         )
+        logger.debug("> %s", body)
+        logger.debug("< %s", response)
 
-        self._log_request_response(body, response)
         self._log_trace(method, path, body, status_code, response, duration)
 
     def log_request_fail(
         self,
-        method: str,
-        full_url: str,
-        path: str,
-        body: Any,
-        duration: float,
-        status_code: Optional[int] = None,
-        response: Optional[str] = None,
-        exception: Optional[Exception] = None,
-    ) -> None:
+        method,
+        full_url,
+        path,
+        body,
+        duration,
+        status_code=None,
+        response=None,
+        exception=None,
+    ):
         """Log an unsuccessful API call."""
         # do not log 404s on HEAD requests
         if method == "HEAD" and status_code == 404:
@@ -286,15 +265,22 @@ class Connection:
             exc_info=exception is not None,
         )
 
-        self._log_request_response(body, response)
+        # body has already been serialized to utf-8, deserialize it for logging
+        # TODO: find a better way to avoid (de)encoding the body back and forth
+        if body:
+            try:
+                body = body.decode("utf-8", "ignore")
+            except AttributeError:
+                pass
+
+        logger.debug("> %s", body)
+
         self._log_trace(method, path, body, status_code, response, duration)
 
-    def _raise_error(
-        self,
-        status_code: int,
-        raw_data: Union[str, bytes],
-        content_type: Optional[str] = None,
-    ) -> None:
+        if response is not None:
+            logger.debug("< %s", response)
+
+    def _raise_error(self, status_code, raw_data, content_type=None):
         """Locate appropriate exception and raise it."""
         error_message = raw_data
         additional_info = None
@@ -316,11 +302,11 @@ class Connection:
             status_code, error_message, additional_info
         )
 
-    def _get_default_user_agent(self) -> str:
-        return f"opensearch-py/{__versionstr__} (Python {python_version()})"
+    def _get_default_user_agent(self):
+        return "opensearch-py/%s (Python %s)" % (__versionstr__, python_version())
 
     @staticmethod
-    def default_ca_certs() -> Union[str, None]:
+    def default_ca_certs():
         """
         Get the default CA certificate bundle, preferring those configured in
         the standard OpenSSL environment variables before those provided by
@@ -328,12 +314,12 @@ class Connection:
         """
         ca_certs = os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR")
 
-        if not ca_certs:
-            try:
-                import certifi
+        if ca_certs:
+            return ca_certs
 
-                ca_certs = certifi.where()
-            except ImportError:
-                pass
-
-        return ca_certs
+        try:
+            import certifi
+        except ImportError:
+            pass
+        else:
+            return certifi.where()

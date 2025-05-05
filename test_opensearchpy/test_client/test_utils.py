@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # SPDX-License-Identifier: Apache-2.0
 #
 # The OpenSearch Contributors require contributions made to
@@ -25,22 +26,23 @@
 #  under the License.
 
 
-from typing import Any
+from __future__ import unicode_literals
 
 from opensearchpy.client.utils import _bulk_body, _escape, _make_path, query_params
+from opensearchpy.compat import PY2
 
-from ..test_cases import TestCase
+from ..test_cases import SkipTest, TestCase
 
 
 class TestQueryParams(TestCase):
-    def setup_method(self, _: Any) -> None:
-        self.calls: Any = []
+    def setup_method(self, _):
+        self.calls = []
 
     @query_params("simple_param")
-    def func_to_wrap(self, *args: Any, **kwargs: Any) -> None:
+    def func_to_wrap(self, *args, **kwargs):
         self.calls.append((args, kwargs))
 
-    def test_handles_params(self) -> None:
+    def test_handles_params(self):
         self.func_to_wrap(params={"simple_param_2": "2"}, simple_param="3")
         self.assertEqual(
             self.calls,
@@ -55,19 +57,19 @@ class TestQueryParams(TestCase):
             ],
         )
 
-    def test_handles_headers(self) -> None:
+    def test_handles_headers(self):
         self.func_to_wrap(headers={"X-Opaque-Id": "app-1"})
         self.assertEqual(
             self.calls, [((), {"params": {}, "headers": {"x-opaque-id": "app-1"}})]
         )
 
-    def test_handles_opaque_id(self) -> None:
+    def test_handles_opaque_id(self):
         self.func_to_wrap(opaque_id="request-id")
         self.assertEqual(
             self.calls, [((), {"params": {}, "headers": {"x-opaque-id": "request-id"}})]
         )
 
-    def test_handles_empty_none_and_normalization(self) -> None:
+    def test_handles_empty_none_and_normalization(self):
         self.func_to_wrap(params=None)
         self.assertEqual(self.calls[-1], ((), {"params": {}, "headers": {}}))
 
@@ -83,32 +85,7 @@ class TestQueryParams(TestCase):
         self.func_to_wrap(headers={"X": "y"})
         self.assertEqual(self.calls[-1], ((), {"params": {}, "headers": {"x": "y"}}))
 
-    def test_non_escaping_params(self) -> None:
-        # the query_params decorator doesn't validate "timeout" it simply avoids escaping as it did
-        self.func_to_wrap(simple_param="x", timeout="4s")
-        self.assertEqual(
-            self.calls[-1],
-            ((), {"params": {"simple_param": b"x", "timeout": "4s"}, "headers": {}}),
-        )
-
-        self.func_to_wrap(simple_param="x", timeout=4, ignore=5, request_timeout=6)
-        self.assertEqual(
-            self.calls[-1],
-            (
-                (),
-                {
-                    "params": {
-                        "simple_param": b"x",
-                        "timeout": 4,
-                        "ignore": 5,
-                        "request_timeout": 6,
-                    },
-                    "headers": {},
-                },
-            ),
-        )
-
-    def test_per_call_authentication(self) -> None:
+    def test_per_call_authentication(self):
         self.func_to_wrap(api_key=("name", "key"))
         self.assertEqual(
             self.calls[-1],
@@ -153,83 +130,52 @@ class TestQueryParams(TestCase):
 
 
 class TestMakePath(TestCase):
-    def test_handles_unicode(self) -> None:
-        from urllib.parse import quote
-
+    def test_handles_unicode(self):
         id = "中文"
         self.assertEqual(
-            _make_path("some-index", "type", quote(id)),
-            "/some-index/type/%25E4%25B8%25AD%25E6%2596%2587",
+            "/some-index/type/%E4%B8%AD%E6%96%87", _make_path("some-index", "type", id)
         )
 
-    def test_handles_single_arg(self) -> None:
-        from urllib.parse import quote
-
-        id = "idwith!char"
+    def test_handles_utf_encoded_string(self):
+        if not PY2:
+            raise SkipTest("Only relevant for py2")
+        id = "中文".encode("utf-8")
         self.assertEqual(
-            _make_path("some-index", "type", quote(id)),
-            "/some-index/type/idwith%2521char",
-        )
-
-    def test_handles_multiple_args(self) -> None:
-        from urllib.parse import quote
-
-        ids = ["id!with@char", "another#id$here"]
-        quoted_ids = [quote(id) for id in ids]
-
-        self.assertEqual(
-            _make_path("some-index", "type", quoted_ids),
-            "/some-index/type/id%2521with%2540char,another%2523id%2524here",
-        )
-
-    def test_handles_arrays_of_args(self) -> None:
-        self.assertEqual(
-            "/index1,index2/type1,type2/doc1,doc2",
-            _make_path(
-                ("index1", "index2"), ["type1", "type2"], tuple(["doc1", "doc2"])
-            ),
-        )
-
-        from urllib.parse import quote
-
-        ids = [quote("$id!1"), quote("id*@2"), quote("#id3#")]
-        self.assertEqual(
-            _make_path("some-index", ids, "type"),
-            "/some-index/%2524id%25211,id%252A%25402,%2523id3%2523/type",
+            "/some-index/type/%E4%B8%AD%E6%96%87", _make_path("some-index", "type", id)
         )
 
 
 class TestEscape(TestCase):
-    def test_handles_ascii(self) -> None:
+    def test_handles_ascii(self):
         string = "abc123"
         self.assertEqual(b"abc123", _escape(string))
 
-    def test_handles_unicode(self) -> None:
+    def test_handles_unicode(self):
         string = "中文"
         self.assertEqual(b"\xe4\xb8\xad\xe6\x96\x87", _escape(string))
 
-    def test_handles_bytestring(self) -> None:
+    def test_handles_bytestring(self):
         string = b"celery-task-meta-c4f1201f-eb7b-41d5-9318-a75a8cfbdaa0"
         self.assertEqual(string, _escape(string))
 
 
 class TestBulkBody(TestCase):
-    def test_proper_bulk_body_as_string_is_not_modified(self) -> None:
+    def test_proper_bulk_body_as_string_is_not_modified(self):
         string_body = '"{"index":{ "_index" : "test"}}\n{"field1": "value1"}"\n'
         self.assertEqual(string_body, _bulk_body(None, string_body))
 
-    def test_proper_bulk_body_as_bytestring_is_not_modified(self) -> None:
+    def test_proper_bulk_body_as_bytestring_is_not_modified(self):
         bytestring_body = b'"{"index":{ "_index" : "test"}}\n{"field1": "value1"}"\n'
         self.assertEqual(bytestring_body, _bulk_body(None, bytestring_body))
 
-    def test_bulk_body_as_string_adds_trailing_newline(self) -> None:
+    def test_bulk_body_as_string_adds_trailing_newline(self):
         string_body = '"{"index":{ "_index" : "test"}}\n{"field1": "value1"}"'
         self.assertEqual(
             '"{"index":{ "_index" : "test"}}\n{"field1": "value1"}"\n',
             _bulk_body(None, string_body),
         )
 
-    def test_bulk_body_as_bytestring_adds_trailing_newline(self) -> None:
+    def test_bulk_body_as_bytestring_adds_trailing_newline(self):
         bytestring_body = b'"{"index":{ "_index" : "test"}}\n{"field1": "value1"}"'
         self.assertEqual(
             b'"{"index":{ "_index" : "test"}}\n{"field1": "value1"}"\n',

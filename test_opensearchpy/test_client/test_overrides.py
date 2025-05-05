@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # SPDX-License-Identifier: Apache-2.0
 #
 # The OpenSearch Contributors require contributions made to
@@ -31,57 +32,57 @@ from test_opensearchpy.test_cases import OpenSearchTestCase
 
 
 class TestOverriddenUrlTargets(OpenSearchTestCase):
-    def test_create(self) -> None:
+    def test_create(self):
         self.client.create(index="test-index", id="test-id", body={})
         self.assert_url_called("PUT", "/test-index/_create/test-id")
 
-    def test_delete(self) -> None:
+    def test_delete(self):
         self.client.delete(index="test-index", id="test-id")
         self.assert_url_called("DELETE", "/test-index/_doc/test-id")
 
-    def test_exists(self) -> None:
+    def test_exists(self):
         self.client.exists(index="test-index", id="test-id")
         self.assert_url_called("HEAD", "/test-index/_doc/test-id")
 
-    def test_explain(self) -> None:
+    def test_explain(self):
         self.client.explain(index="test-index", id="test-id")
         self.assert_url_called("POST", "/test-index/_explain/test-id")
 
-    def test_get(self) -> None:
+    def test_get(self):
         self.client.get(index="test-index", id="test-id")
         self.assert_url_called("GET", "/test-index/_doc/test-id")
 
-    def test_get_source(self) -> None:
+    def test_get_source(self):
         self.client.get_source(index="test-index", id="test-id")
         self.assert_url_called("GET", "/test-index/_source/test-id")
 
-    def test_exists_source(self) -> None:
+    def test_exists_source(self):
         self.client.exists_source(index="test-index", id="test-id")
         self.assert_url_called("HEAD", "/test-index/_source/test-id")
 
-    def test_index(self) -> None:
+    def test_index(self):
         self.client.index(index="test-index", body={})
         self.assert_url_called("POST", "/test-index/_doc")
 
         self.client.index(index="test-index", id="test-id", body={})
         self.assert_url_called("PUT", "/test-index/_doc/test-id")
 
-    def test_termvectors(self) -> None:
+    def test_termvectors(self):
         self.client.termvectors(index="test-index", body={})
         self.assert_url_called("POST", "/test-index/_termvectors")
 
         self.client.termvectors(index="test-index", id="test-id", body={})
         self.assert_url_called("POST", "/test-index/_termvectors/test-id")
 
-    def test_mtermvectors(self) -> None:
+    def test_mtermvectors(self):
         self.client.mtermvectors(index="test-index", body={})
         self.assert_url_called("POST", "/test-index/_mtermvectors")
 
-    def test_update(self) -> None:
+    def test_update(self):
         self.client.update(index="test-index", id="test-id", body={})
         self.assert_url_called("POST", "/test-index/_update/test-id")
 
-    def test_cluster_state(self) -> None:
+    def test_cluster_state(self):
         self.client.cluster.state()
         self.assert_url_called("GET", "/_cluster/state")
 
@@ -91,30 +92,20 @@ class TestOverriddenUrlTargets(OpenSearchTestCase):
         self.client.cluster.state(index="test-index", metric="test-metric")
         self.assert_url_called("GET", "/_cluster/state/test-metric/test-index")
 
-    def test_cluster_stats(self) -> None:
+    def test_cluster_stats(self):
         self.client.cluster.stats()
         self.assert_url_called("GET", "/_cluster/stats")
 
         self.client.cluster.stats(node_id="test-node")
         self.assert_url_called("GET", "/_cluster/stats/nodes/test-node")
 
-        self.client.cluster.stats(node_id="test-node", metric="indices")
-        self.assert_url_called("GET", "/_cluster/stats/indices/nodes/test-node")
-
-        self.client.cluster.stats(
-            node_id="test-node", metric="indices", index_metric="analysis"
-        )
-        self.assert_url_called(
-            "GET", "/_cluster/stats/indices/analysis/nodes/test-node"
-        )
-
-    def test_indices_put_mapping(self) -> None:
+    def test_indices_put_mapping(self):
         self.client.indices.put_mapping(body={})
         self.assert_url_called("PUT", "/_all/_mapping")
 
         self.client.indices.put_mapping(index="test-index", body={})
         self.assert_url_called("PUT", "/test-index/_mapping")
 
-    def test_tasks_get(self) -> None:
+    def test_tasks_get(self):
         with pytest.warns(DeprecationWarning):
             self.client.tasks.get()

@@ -1,4 +1,6 @@
 {% extends "base" %}
 {% block request %}
+        doc_type = "_doc"
+
         {{ super()|trim }}
 {% endblock %}

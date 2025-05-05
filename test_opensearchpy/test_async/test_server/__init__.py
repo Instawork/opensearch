@@ -23,32 +23,3 @@
 #  KIND, either express or implied.  See the License for the
 #  specific language governing permissions and limitations
 #  under the License.
-
-
-import os
-from unittest import IsolatedAsyncioTestCase
-
-from opensearchpy._async.helpers.test import get_test_client
-from opensearchpy.connection.async_connections import add_connection
-
-from ...utils import wipe_cluster
-
-
-class AsyncOpenSearchTestCase(IsolatedAsyncioTestCase):
-    async def asyncSetUp(
-        self,
-    ) -> None:
-        # pylint: disable=invalid-name,missing-function-docstring
-        password = os.environ.get("OPENSEARCH_INITIAL_ADMIN_PASSWORD", "admin")
-        self.client = await get_test_client(
-            verify_certs=False, http_auth=("admin", password)
-        )
-        await add_connection("default", self.client)
-
-    async def asyncTearDown(
-        self,
-    ) -> None:
-        # pylint: disable=invalid-name,missing-function-docstring
-        wipe_cluster(self.client)
-        if self.client:
-            await self.client.close()

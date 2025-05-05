@@ -25,21 +25,20 @@
 #  under the License.
 
 
+from __future__ import unicode_literals
+
 import base64
 import weakref
 from datetime import date, datetime
 from functools import wraps
-from typing import Any, Callable, Optional
 
-from opensearchpy.serializer import Serializer
-
-from ..compat import quote, string_types, to_bytes, to_str, unquote, urlparse
+from ..compat import PY2, quote, string_types, to_bytes, to_str, unquote, urlparse
 
 # parts of URL to be omitted
-SKIP_IN_PATH: Any = (None, "", b"", [], ())
+SKIP_IN_PATH = (None, "", b"", [], ())
 
 
-def _normalize_hosts(hosts: Any) -> Any:
+def _normalize_hosts(hosts):
     """
     Helper function to transform hosts argument to
     :class:`~opensearchpy.OpenSearch` to a list of dicts.
@@ -57,7 +56,7 @@ def _normalize_hosts(hosts: Any) -> Any:
     for host in hosts:
         if isinstance(host, string_types):
             if "://" not in host:
-                host = f"//{host}"  # type: ignore
+                host = "//%s" % host
 
             parsed_url = urlparse(host)
             h = {"host": parsed_url.hostname}
@@ -70,7 +69,7 @@ def _normalize_hosts(hosts: Any) -> Any:
                 h["use_ssl"] = True
 
             if parsed_url.username or parsed_url.password:
-                h["http_auth"] = "{}:{}".format(
+                h["http_auth"] = "%s:%s" % (
                     unquote(parsed_url.username),
                     unquote(parsed_url.password),
                 )
@@ -84,7 +83,7 @@ def _normalize_hosts(hosts: Any) -> Any:
     return out
 
 
-def _escape(value: Any) -> Any:
+def _escape(value):
     """
     Escape a single value of a URL string or a query parameter. If it is a list
     or tuple, turn it into a comma-separated string first.
@@ -108,13 +107,15 @@ def _escape(value: Any) -> Any:
 
     # encode strings to utf-8
     if isinstance(value, string_types):
-        if isinstance(value, str):
+        if PY2 and isinstance(value, unicode):  # noqa: F821
+            return value.encode("utf-8")
+        if not PY2 and isinstance(value, str):
             return value.encode("utf-8")
 
     return str(value)
 
 
-def _make_path(*parts: Any) -> str:
+def _make_path(*parts):
     """
     Create a URL string from parts, omit all `None` values and empty strings.
     Convert lists and tuples to comma separated values.
@@ -132,15 +133,15 @@ def _make_path(*parts: Any) -> str:
 GLOBAL_PARAMS = ("pretty", "human", "error_trace", "format", "filter_path")
 
 
-def query_params(*opensearch_query_params: Any) -> Callable:  # type: ignore
+def query_params(*opensearch_query_params):
     """
     Decorator that pops all accepted parameters from method's kwargs and puts
     them in the params argument.
     """
 
-    def _wrapper(func: Any) -> Any:
+    def _wrapper(func):
         @wraps(func)
-        def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        def _wrapped(*args, **kwargs):
             params = (kwargs.pop("params", None) or {}).copy()
             headers = {
                 k.lower(): v
@@ -158,14 +159,11 @@ def query_params(*opensearch_query_params: Any) -> Callable:  # type: ignore
                     "Only one of 'http_auth' and 'api_key' may be passed at a time"
                 )
             elif http_auth is not None:
-                headers["authorization"] = f"Basic {_base64_auth_header(http_auth)}"
+                headers["authorization"] = "Basic %s" % (
+                    _base64_auth_header(http_auth),
+                )
             elif api_key is not None:
-                headers["authorization"] = f"ApiKey {_base64_auth_header(api_key)}"
-
-            # don't escape ignore, request_timeout, or timeout
-            for p in ("ignore", "request_timeout", "timeout"):
-                if p in kwargs:
-                    params[p] = kwargs.pop(p)
+                headers["authorization"] = "ApiKey %s" % (_base64_auth_header(api_key),)
 
             for p in opensearch_query_params + GLOBAL_PARAMS:
                 if p in kwargs:
@@ -173,6 +171,10 @@ def query_params(*opensearch_query_params: Any) -> Callable:  # type: ignore
                     if v is not None:
                         params[p] = _escape(v)
 
+            # don't treat ignore, request_timeout, and opaque_id as other params to avoid escaping
+            for p in ("ignore", "request_timeout"):
+                if p in kwargs:
+                    params[p] = kwargs.pop(p)
             return func(*args, params=params, headers=headers, **kwargs)
 
         return _wrapped
@@ -180,22 +182,22 @@ def query_params(*opensearch_query_params: Any) -> Callable:  # type: ignore
     return _wrapper
 
 
-def _bulk_body(serializer: Optional[Serializer], body: Any) -> Any:
+def _bulk_body(serializer, body):
     # if not passed in a string, serialize items and join by newline
     if not isinstance(body, string_types):
-        body = "\n".join(map(serializer.dumps, body))  # type: ignore
+        body = "\n".join(map(serializer.dumps, body))
 
     # bulk body must end with a newline
     if isinstance(body, bytes):
         if not body.endswith(b"\n"):
             body += b"\n"
-    elif isinstance(body, string_types) and not body.endswith("\n"):  # type: ignore
-        body += "\n"  # type: ignore
+    elif isinstance(body, string_types) and not body.endswith("\n"):
+        body += "\n"
 
     return body
 
 
-def _base64_auth_header(auth_value: Any) -> str:
+def _base64_auth_header(auth_value):
     """Takes either a 2-tuple or a base64-encoded string
     and returns a base64-encoded string to be used
     as an HTTP authorization header.
@@ -205,18 +207,18 @@ def _base64_auth_header(auth_value: Any) -> str:
     return to_str(auth_value)
 
 
-class NamespacedClient:
-    def __init__(self, client: Any) -> None:
+class NamespacedClient(object):
+    def __init__(self, client):
         self.client = client
 
     @property
-    def transport(self) -> Any:
+    def transport(self):
         return self.client.transport
 
 
 class AddonClient(NamespacedClient):
     @classmethod
-    def infect_client(cls: Any, client: NamespacedClient) -> NamespacedClient:
+    def infect_client(cls, client):
         addon = cls(weakref.proxy(client))
         setattr(client, cls.namespace, addon)
         return client

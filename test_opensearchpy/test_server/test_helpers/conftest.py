@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # SPDX-License-Identifier: Apache-2.0
 #
 # The OpenSearch Contributors require contributions made to
@@ -24,10 +25,8 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
-import os
 import re
 from datetime import datetime
-from typing import Any
 
 from pytest import fixture
 
@@ -45,46 +44,32 @@ from .test_data import (
 from .test_document import Comment, History, PullRequest, User
 
 
-@fixture(scope="session")  # type: ignore
-def client() -> Any:
-    client = get_test_client(
-        verify_certs=False,
-        http_auth=("admin", os.getenv("OPENSEARCH_PASSWORD", "admin")),
-    )
+@fixture(scope="session")
+def client():
+    client = get_test_client(verify_certs=False, http_auth=("admin", "admin"))
     add_connection("default", client)
     return client
 
 
-@fixture(scope="session")  # type: ignore
-def opensearch_version(client: Any) -> Any:
-    """
-    yields a major version from the client
-    :param client: client to connect to opensearch
-    """
-    info: Any = client.info()
+@fixture(scope="session")
+def opensearch_version(client):
+    info = client.info()
     print(info)
-    yield (int(x) for x in match_version(info))
+    yield tuple(
+        int(x)
+        for x in re.match(r"^([0-9.]+)", info["version"]["number"]).group(1).split(".")
+    )
 
 
-def match_version(info: Any) -> Any:
-    """
-    matches the major version from the given client info
-    :param info: part of the response from OpenSearch
-    """
-    match = re.match(r"^([0-9.]+)", info["version"]["number"])
-    assert match is not None
-    yield match.group(1).split(".")
-
-
-@fixture  # type: ignore
-def write_client(client: Any) -> Any:
+@fixture
+def write_client(client):
     yield client
     client.indices.delete("test-*", ignore=404)
     client.indices.delete_template("test-template", ignore=404)
 
 
-@fixture(scope="session")  # type: ignore
-def data_client(client: Any) -> Any:
+@fixture(scope="session")
+def data_client(client):
     # create mappings
     create_git_index(client, "git")
     create_flat_git_index(client, "flat-git")
@@ -96,8 +81,8 @@ def data_client(client: Any) -> Any:
     client.indices.delete("flat-git", ignore=404)
 
 
-@fixture  # type: ignore
-def pull_request(write_client: Any) -> Any:
+@fixture
+def pull_request(write_client):
     PullRequest.init()
     pr = PullRequest(
         _id=42,
@@ -120,9 +105,8 @@ def pull_request(write_client: Any) -> Any:
     return pr
 
 
-@fixture  # type: ignore
-def setup_ubq_tests(client: Any) -> str:
-    # todo what's a ubq test?
+@fixture
+def setup_ubq_tests(client):
     index = "test-git"
     create_git_index(client, index)
     bulk(client, TEST_GIT_DATA, raise_on_error=True, refresh=True)

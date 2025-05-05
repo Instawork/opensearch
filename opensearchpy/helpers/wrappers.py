@@ -25,9 +25,12 @@
 #  under the License.
 
 import operator
-from typing import Any
+
+from six import iteritems, string_types
 
 from .utils import AttrDict
+
+__all__ = ["Range"]
 
 
 class Range(AttrDict):
@@ -38,7 +41,7 @@ class Range(AttrDict):
         "gte": operator.ge,
     }
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args, **kwargs):
         if args and (len(args) > 1 or kwargs or not isinstance(args[0], dict)):
             raise ValueError(
                 "Range accepts a single dictionary or a set of keyword arguments."
@@ -47,7 +50,7 @@ class Range(AttrDict):
 
         for k in data:
             if k not in self.OPS:
-                raise ValueError(f"Range received an unknown operator {k!r}")
+                raise ValueError("Range received an unknown operator %r" % k)
 
         if "gt" in data and "gte" in data:
             raise ValueError("You cannot specify both gt and gte for Range.")
@@ -55,14 +58,14 @@ class Range(AttrDict):
         if "lt" in data and "lte" in data:
             raise ValueError("You cannot specify both lt and lte for Range.")
 
-        super().__init__(args[0] if args else kwargs)
+        super(Range, self).__init__(args[0] if args else kwargs)
 
-    def __repr__(self) -> str:
-        return "Range(%s)" % ", ".join("%s=%r" % op for op in self._d_.items())
+    def __repr__(self):
+        return "Range(%s)" % ", ".join("%s=%r" % op for op in iteritems(self._d_))
 
-    def __contains__(self, item: Any) -> bool:
-        if isinstance(item, str):
-            return super().__contains__(item)
+    def __contains__(self, item):
+        if isinstance(item, string_types):
+            return super(Range, self).__contains__(item)
 
         for op in self.OPS:
             if op in self._d_ and not self.OPS[op](item, self._d_[op]):
@@ -70,7 +73,7 @@ class Range(AttrDict):
         return True
 
     @property
-    def upper(self) -> Any:
+    def upper(self):
         if "lt" in self._d_:
             return self._d_["lt"], False
         if "lte" in self._d_:
@@ -78,12 +81,9 @@ class Range(AttrDict):
         return None, False
 
     @property
-    def lower(self) -> Any:
+    def lower(self):
         if "gt" in self._d_:
             return self._d_["gt"], False
         if "gte" in self._d_:
             return self._d_["gte"], True
         return None, False
-
-
-__all__ = ["Range"]

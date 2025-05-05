@@ -23,8 +23,10 @@
 #  KIND, either express or implied.  See the License for the
 #  specific language governing permissions and limitations
 #  under the License.
+
 from datetime import datetime, timedelta
-from typing import Any, Optional
+
+from six import iteritems, itervalues
 
 from opensearchpy.helpers.aggs import A
 
@@ -43,25 +45,23 @@ __all__ = [
 ]
 
 
-class Facet:
+class Facet(object):
     """
     A facet on faceted search. Wraps and aggregation and provides functionality
     to create a filter for selected values and return a list of facet values
     from the result of the aggregation.
     """
 
-    agg_type: Optional[str] = None
+    agg_type = None
 
-    def __init__(
-        self, metric: Any = None, metric_sort: str = "desc", **kwargs: Any
-    ) -> None:
+    def __init__(self, metric=None, metric_sort="desc", **kwargs):
         self.filter_values = ()
         self._params = kwargs
         self._metric = metric
         if metric and metric_sort:
             self._params["order"] = {"metric": metric_sort}
 
-    def get_aggregation(self) -> Any:
+    def get_aggregation(self):
         """
         Return the aggregation object.
         """
@@ -70,7 +70,7 @@ class Facet:
             agg.metric("metric", self._metric)
         return agg
 
-    def add_filter(self, filter_values: Any) -> Any:
+    def add_filter(self, filter_values):
         """
         Construct a filter.
         """
@@ -82,22 +82,25 @@ class Facet:
             f |= self.get_value_filter(v)
         return f
 
-    def get_value_filter(self, filter_value: Any) -> Any:
-        return None
+    def get_value_filter(self, filter_value):
+        """
+        Construct a filter for an individual value
+        """
+        pass
 
-    def is_filtered(self, key: Any, filter_values: Any) -> bool:
+    def is_filtered(self, key, filter_values):
         """
         Is a filter active on the given key.
         """
         return key in filter_values
 
-    def get_value(self, bucket: Any) -> Any:
+    def get_value(self, bucket):
         """
         return a value representing a bucket. Its key as default.
         """
         return bucket["key"]
 
-    def get_metric(self, bucket: Any) -> Any:
+    def get_metric(self, bucket):
         """
         Return a metric, by default doc_count for a bucket.
         """
@@ -105,7 +108,7 @@ class Facet:
             return bucket["metric"]["value"]
         return bucket["doc_count"]
 
-    def get_values(self, data: Any, filter_values: Any) -> Any:
+    def get_values(self, data, filter_values):
         """
         Turn the raw bucket data into a list of tuples containing the key,
         number of documents and a flag indicating whether this value has been
@@ -121,9 +124,9 @@ class Facet:
 
 
 class TermsFacet(Facet):
-    agg_type: Optional[str] = "terms"
+    agg_type = "terms"
 
-    def add_filter(self, filter_values: Any) -> Any:
+    def add_filter(self, filter_values):
         """Create a terms filter instead of bool containing term filters."""
         if filter_values:
             return Terms(
@@ -134,7 +137,7 @@ class TermsFacet(Facet):
 class RangeFacet(Facet):
     agg_type = "range"
 
-    def _range_to_dict(self, range: Any) -> Any:
+    def _range_to_dict(self, range):
         key, range = range
         out = {"key": key}
         if range[0] is not None:
@@ -143,13 +146,13 @@ class RangeFacet(Facet):
             out["to"] = range[1]
         return out
 
-    def __init__(self, ranges: Any, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, ranges, **kwargs):
+        super(RangeFacet, self).__init__(**kwargs)
         self._params["ranges"] = list(map(self._range_to_dict, ranges))
         self._params["keyed"] = False
         self._ranges = dict(ranges)
 
-    def get_value_filter(self, filter_value: Any) -> Any:
+    def get_value_filter(self, filter_value):
         f, t = self._ranges[filter_value]
         limits = {}
         if f is not None:
@@ -163,7 +166,7 @@ class RangeFacet(Facet):
 class HistogramFacet(Facet):
     agg_type = "histogram"
 
-    def get_value_filter(self, filter_value: Any) -> Any:
+    def get_value_filter(self, filter_value):
         return Range(
             _expand__to_dot=False,
             **{
@@ -175,25 +178,25 @@ class HistogramFacet(Facet):
         )
 
 
-def _date_interval_year(d: Any) -> Any:
+def _date_interval_year(d):
     return d.replace(
         year=d.year + 1, day=(28 if d.month == 2 and d.day == 29 else d.day)
     )
 
 
-def _date_interval_month(d: Any) -> Any:
+def _date_interval_month(d):
     return (d + timedelta(days=32)).replace(day=1)
 
 
-def _date_interval_week(d: Any) -> Any:
+def _date_interval_week(d):
     return d + timedelta(days=7)
 
 
-def _date_interval_day(d: Any) -> Any:
+def _date_interval_day(d):
     return d + timedelta(days=1)
 
 
-def _date_interval_hour(d: Any) -> Any:
+def _date_interval_hour(d):
     return d + timedelta(hours=1)
 
 
@@ -213,22 +216,22 @@ class DateHistogramFacet(Facet):
         "1h": _date_interval_hour,
     }
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         kwargs.setdefault("min_doc_count", 0)
-        super().__init__(**kwargs)
+        super(DateHistogramFacet, self).__init__(**kwargs)
 
-    def get_value(self, bucket: Any) -> Any:
+    def get_value(self, bucket):
         if not isinstance(bucket["key"], datetime):
             # OpenSearch returns key=None instead of 0 for date 1970-01-01,
             # so we need to set key to 0 to avoid TypeError exception
             if bucket["key"] is None:
                 bucket["key"] = 0
             # Preserve milliseconds in the datetime
-            return datetime.utcfromtimestamp(int(bucket["key"]) / 1000.0)  # type: ignore
+            return datetime.utcfromtimestamp(int(bucket["key"]) / 1000.0)
         else:
             return bucket["key"]
 
-    def get_value_filter(self, filter_value: Any) -> Any:
+    def get_value_filter(self, filter_value):
         for interval_type in ("calendar_interval", "fixed_interval"):
             if interval_type in self._params:
                 break
@@ -251,15 +254,17 @@ class DateHistogramFacet(Facet):
 class NestedFacet(Facet):
     agg_type = "nested"
 
-    def __init__(self, path: Any, nested_facet: Any) -> None:
+    def __init__(self, path, nested_facet):
         self._path = path
         self._inner = nested_facet
-        super().__init__(path=path, aggs={"inner": nested_facet.get_aggregation()})
+        super(NestedFacet, self).__init__(
+            path=path, aggs={"inner": nested_facet.get_aggregation()}
+        )
 
-    def get_values(self, data: Any, filter_values: Any) -> Any:
+    def get_values(self, data, filter_values):
         return self._inner.get_values(data.inner, filter_values)
 
-    def add_filter(self, filter_values: Any) -> Any:
+    def add_filter(self, filter_values):
         inner_q = self._inner.add_filter(filter_values)
         if inner_q:
             return Nested(path=self._path, query=inner_q)
@@ -267,14 +272,14 @@ class NestedFacet(Facet):
 
 class FacetedResponse(Response):
     @property
-    def query_string(self) -> Any:
+    def query_string(self):
         return self._faceted_search._query
 
     @property
-    def facets(self) -> Any:
+    def facets(self):
         if not hasattr(self, "_facets"):
             super(AttrDict, self).__setattr__("_facets", AttrDict({}))
-            for name, facet in self._faceted_search.facets.items():
+            for name, facet in iteritems(self._faceted_search.facets):
                 self._facets[name] = facet.get_values(
                     getattr(getattr(self.aggregations, "_filter_" + name), name),
                     self._faceted_search.filter_values.get(name, ()),
@@ -282,7 +287,7 @@ class FacetedResponse(Response):
         return self._facets
 
 
-class FacetedSearch:
+class FacetedSearch(object):
     """
     Abstraction for creating faceted navigation searches that takes care of
     composing the queries, aggregations and filters as needed as well as
@@ -324,38 +329,38 @@ class FacetedSearch:
 
     """
 
-    index: Any = None
-    doc_types: Any = None
-    fields: Any = None
-    facets: Any = {}
+    index = None
+    doc_types = None
+    fields = None
+    facets = {}
     using = "default"
 
-    def __init__(self, query: Any = None, filters: Any = {}, sort: Any = ()) -> None:
+    def __init__(self, query=None, filters={}, sort=()):
         """
         :arg query: the text to search for
         :arg filters: facet values to filter
         :arg sort: sort information to be passed to :class:`~opensearchpy.Search`
         """
         self._query = query
-        self._filters: Any = {}
+        self._filters = {}
         self._sort = sort
-        self.filter_values: Any = {}
-        for name, value in filters.items():
+        self.filter_values = {}
+        for name, value in iteritems(filters):
             self.add_filter(name, value)
 
         self._s = self.build_search()
 
-    def count(self) -> Any:
+    def count(self):
         return self._s.count()
 
-    def __getitem__(self, k: Any) -> Any:
+    def __getitem__(self, k):
         self._s = self._s[k]
         return self
 
-    def __iter__(self) -> Any:
+    def __iter__(self):
         return iter(self._s)
 
-    def add_filter(self, name: Any, filter_values: Any) -> Any:
+    def add_filter(self, name, filter_values):
         """
         Add a filter for a facet.
         """
@@ -377,7 +382,7 @@ class FacetedSearch:
 
         self._filters[name] = f
 
-    def search(self) -> Any:
+    def search(self):
         """
         Returns the base Search object to which the facets are added.
 
@@ -387,7 +392,7 @@ class FacetedSearch:
         s = Search(doc_type=self.doc_types, index=self.index, using=self.using)
         return s.response_class(FacetedResponse)
 
-    def query(self, search: Any, query: Any) -> Any:
+    def query(self, search, query):
         """
         Add query part to ``search``.
 
@@ -400,15 +405,15 @@ class FacetedSearch:
                 return search.query("multi_match", query=query)
         return search
 
-    def aggregate(self, search: Any) -> Any:
+    def aggregate(self, search):
         """
         Add aggregations representing the facets selected, including potential
         filters.
         """
-        for f, facet in self.facets.items():
+        for f, facet in iteritems(self.facets):
             agg = facet.get_aggregation()
             agg_filter = MatchAll()
-            for field, filter in self._filters.items():
+            for field, filter in iteritems(self._filters):
                 if f == field:
                     continue
                 agg_filter &= filter
@@ -416,7 +421,7 @@ class FacetedSearch:
                 f, agg
             )
 
-    def filter(self, search: Any) -> Any:
+    def filter(self, search):
         """
         Add a ``post_filter`` to the search request narrowing the results based
         on the facet filters.
@@ -425,11 +430,11 @@ class FacetedSearch:
             return search
 
         post_filter = MatchAll()
-        for f in self._filters.values():
+        for f in itervalues(self._filters):
             post_filter &= f
         return search.post_filter(post_filter)
 
-    def highlight(self, search: Any) -> Any:
+    def highlight(self, search):
         """
         Add highlighting for all the fields
         """
@@ -437,7 +442,7 @@ class FacetedSearch:
             *(f if "^" not in f else f.split("^", 1)[0] for f in self.fields)
         )
 
-    def sort(self, search: Any) -> Any:
+    def sort(self, search):
         """
         Add sorting information to the request.
         """
@@ -445,7 +450,7 @@ class FacetedSearch:
             search = search.sort(*self._sort)
         return search
 
-    def build_search(self) -> Any:
+    def build_search(self):
         """
         Construct the ``Search`` object.
         """
@@ -458,7 +463,7 @@ class FacetedSearch:
         self.aggregate(s)
         return s
 
-    def execute(self) -> Any:
+    def execute(self):
         """
         Execute the search and return the response.
         """

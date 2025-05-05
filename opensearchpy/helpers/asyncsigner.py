@@ -7,9 +7,9 @@
 # Modifications Copyright OpenSearch Contributors. See
 # GitHub history for details.
 
-from typing import Any, Dict, Optional, Union
+import sys
 
-from opensearchpy.helpers.signer import AWSV4Signer
+PY3 = sys.version_info[0] == 3
 
 
 class AWSV4SignerAsyncAuth:
@@ -17,35 +17,42 @@ class AWSV4SignerAsyncAuth:
     AWS V4 Request Signer for Async Requests.
     """
 
-    def __init__(self, credentials: Any, region: str, service: str = "es") -> None:
-        self.signer = AWSV4Signer(credentials, region, service)
+    def __init__(self, credentials, region, service="es"):  # type: ignore
+        if not credentials:
+            raise ValueError("Credentials cannot be empty")
+        self.credentials = credentials
 
-    def __call__(
-        self,
-        method: str,
-        url: str,
-        body: Optional[Union[str, bytes]] = None,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, str]:
-        return self._sign_request(method=method, url=url, body=body, headers=headers)
+        if not region:
+            raise ValueError("Region cannot be empty")
+        self.region = region
 
-    def _sign_request(
-        self,
-        method: str,
-        url: str,
-        body: Optional[Union[str, bytes]],
-        headers: Optional[Dict[str, str]],
-    ) -> Dict[str, str]:
+        if not service:
+            raise ValueError("Service name cannot be empty")
+        self.service = service
+
+    def __call__(self, method, url, query_string, body):  # type: ignore
+        return self._sign_request(method, url, query_string, body)  # type: ignore
+
+    def _sign_request(self, method, url, query_string, body):
         """
         This method helps in signing the request by injecting the required headers.
         :param prepared_request: unsigned headers
         :return: signed headers
         """
 
-        updated_headers = self.signer.sign(
+        from botocore.auth import SigV4Auth
+        from botocore.awsrequest import AWSRequest
+
+        # create an AWS request object and sign it using SigV4Auth
+        aws_request = AWSRequest(
             method=method,
             url=url,
-            body=body,
-            headers=headers,
+            data=body,
         )
-        return updated_headers
+
+        sig_v4_auth = SigV4Auth(self.credentials, self.service, self.region)
+        sig_v4_auth.add_auth(aws_request)
+        aws_request.headers["X-Amz-Content-SHA256"] = sig_v4_auth.payload(aws_request)
+
+        # copy the headers from AWS request object into the prepared_request
+        return dict(aws_request.headers.items())

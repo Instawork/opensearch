@@ -21,7 +21,6 @@ titlesonly:
 maxdepth: 1
 ---
 
-clients/http_client
 clients/cat_client
 clients/cluster_client
 clients/dangling_indices_client
@@ -29,7 +28,6 @@ clients/ingest_client
 clients/indices_client
 clients/nodes_client
 clients/remote_client
-clients/security_client
 clients/snapshot_client
 clients/tasks_client
 clients/features_client
